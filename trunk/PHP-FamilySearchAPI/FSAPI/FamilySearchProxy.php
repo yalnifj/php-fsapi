@@ -127,6 +127,11 @@ class FamilySearchProxy extends FamilySearchAPIClient {
 		$ct = preg_match("/session\s+id=\"(.+)\"/", $response, $match);
 		if ($ct>0) $this->sessionid = $match[1];
 		else $this->hasError = true;
+		
+		//-- store the id on the session for subsequent API calls
+		if (session_id() != "") {
+			 $_SESSION['phpfsapi_sessionid'] = $this->sessionid;
+		}
 
 		if($errorXML) return $response;
 		else return $this->checkErrors($request->getResponseBody());
