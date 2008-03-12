@@ -22,6 +22,11 @@
  * @author Hoang Le
  */
 
+if (stristr($_SERVER["SCRIPT_NAME"], basename(__FILE__))!==false) {
+	print "You cannot access an include file directly.";
+	exit;
+}
+
 class ErrorParser {
 
 	var $insideitem = false;

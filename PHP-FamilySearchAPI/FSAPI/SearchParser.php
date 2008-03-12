@@ -1,35 +1,40 @@
 <?php
+if (stristr($_SERVER["SCRIPT_NAME"], basename(__FILE__))!==false) {
+	print "You cannot access an include file directly.";
+	exit;
+}
+
 class SearchParser {
 	var $xml_parser;
-	var $result_key = "*FAMILYTREE*RESULTS*RESULT";
-	var $person_key = "*FAMILYTREE*RESULTS*RESULT*PERSON";
-	var $name_key = "*FAMILYTREE*RESULTS*RESULT*PERSON*NAME";
-	var $score_key = "*FAMILYTREE*RESULTS*RESULT*SCORE";
-	var $event_key = "*FAMILYTREE*RESULTS*RESULT*PERSON*EVENTS*EVENT";
-	var $date_key = "*FAMILYTREE*RESULTS*RESULT*PERSON*EVENTS*EVENT*DATE";
-	var $place_key = "*FAMILYTREE*RESULTS*RESULT*PERSON*EVENTS*EVENT*PLACE";
-	var $gender_key = "*FAMILYTREE*RESULTS*RESULT*PERSON*GENDER";
+	var $result_key = "*FAMILYTREE*SEARCHES*SEARCH";
+	var $person_key = "*FAMILYTREE*SEARCHES*SEARCH*PERSON";
+	var $name_key = "*FAMILYTREE*SEARCHES*SEARCH*PERSON*NAME*FORM*FULLTEXT";
+	var $score_key = "*FAMILYTREE*SEARCHES*SEARCH*SCORE";
+	var $event_key = "*FAMILYTREE*SEARCHES*SEARCH*PERSON*EVENTS*EVENT";
+	var $date_key = "*FAMILYTREE*SEARCHES*SEARCH*PERSON*EVENTS*EVENT*DATE*ORIGINAL";
+	var $place_key = "*FAMILYTREE*SEARCHES*SEARCH*PERSON*EVENTS*EVENT*PLACE*ORIGINAL";
+	var $gender_key = "*FAMILYTREE*SEARCHES*SEARCH*PERSON*GENDER";
 	
-	var $Pperson_key = "*FAMILYTREE*RESULTS*RESULT*PARENTS*PARENT";
-	var $Pname_key = "*FAMILYTREE*RESULTS*RESULT*PARENTS*PARENT*NAME";
-	var $Pevent_key = "*FAMILYTREE*RESULTS*RESULT*PARENTS*PARENT*EVENTS*EVENT";
-	var $Pdate_key = "*FAMILYTREE*RESULTS*RESULT*PARENTS*PARENT*EVENTS*EVENT*DATE";
-	var $Pplace_key = "*FAMILYTREE*RESULTS*RESULT*PARENTS*PARENT*EVENTS*EVENT*PLACE";
-	var $Pgender_key = "*FAMILYTREE*RESULTS*RESULT*PARENTS*PARENT*GENDER";
+	var $Pperson_key = "*FAMILYTREE*SEARCHES*SEARCH*PARENTS*PARENT";
+	var $Pname_key = "*FAMILYTREE*SEARCHES*SEARCH*PARENTS*PARENT*NAME*FORM*FULLTEXT";
+	var $Pevent_key = "*FAMILYTREE*SEARCHES*SEARCH*PARENTS*PARENT*EVENTS*EVENT";
+	var $Pdate_key = "*FAMILYTREE*SEARCHES*SEARCH*PARENTS*PARENT*EVENTS*EVENT*DATE*ORIGINAL";
+	var $Pplace_key = "*FAMILYTREE*SEARCHES*SEARCH*PARENTS*PARENT*EVENTS*EVENT*PLACE*ORIGINAL";
+	var $Pgender_key = "*FAMILYTREE*SEARCHES*SEARCH*PARENTS*PARENT*GENDER";
 	
-	var $Sperson_key = "*FAMILYTREE*RESULTS*RESULT*SPOUSES*SPOUSE";
-	var $Sname_key = "*FAMILYTREE*RESULTS*RESULT*SPOUSES*SPOUSE*NAME";
-	var $Sevent_key = "*FAMILYTREE*RESULTS*RESULT*SPOUSES*SPOUSE*EVENTS*EVENT";
-	var $Sdate_key = "*FAMILYTREE*RESULTS*RESULT*SPOUSES*SPOUSE*EVENTS*EVENT*DATE";
-	var $Splace_key = "*FAMILYTREE*RESULTS*RESULT*SPOUSES*SPOUSE*EVENTS*EVENT*PLACE";
-	var $Sgender_key = "*FAMILYTREE*RESULTS*RESULT*SPOUSES*SPOUSE*GENDER";
+	var $Sperson_key = "*FAMILYTREE*SEARCHES*SEARCH*SPOUSES*SPOUSE";
+	var $Sname_key = "*FAMILYTREE*SEARCHES*SEARCH*SPOUSES*SPOUSE*NAME*FORM*FULLTEXT";
+	var $Sevent_key = "*FAMILYTREE*SEARCHES*SEARCH*SPOUSES*SPOUSE*EVENTS*EVENT";
+	var $Sdate_key = "*FAMILYTREE*SEARCHES*SEARCH*SPOUSES*SPOUSE*EVENTS*EVENT*DATE*ORIGINAL";
+	var $Splace_key = "*FAMILYTREE*SEARCHES*SEARCH*SPOUSES*SPOUSE*EVENTS*EVENT*PLACE*ORIGINAL";
+	var $Sgender_key = "*FAMILYTREE*SEARCHES*SEARCH*SPOUSES*SPOUSE*GENDER";
 	
-	var $Cperson_key = "*FAMILYTREE*RESULTS*RESULT*CHILDREN*CHILD";
-	var $Cname_key = "*FAMILYTREE*RESULTS*RESULT*CHILDREN*CHILD*NAME";
-	var $Cevent_key = "*FAMILYTREE*RESULTS*RESULT*CHILDREN*CHILD*EVENTS*EVENT";
-	var $Cdate_key = "*FAMILYTREE*RESULTS*RESULT*CHILDREN*CHILD*EVENTS*EVENT*DATE";
-	var $Cplace_key = "*FAMILYTREE*RESULTS*RESULT*CHILDREN*CHILD*EVENTS*EVENT*PLACE";
-	var $Cgender_key = "*FAMILYTREE*RESULTS*RESULT*CHILDREN*CHILD*GENDER";
+	var $Cperson_key = "*FAMILYTREE*SEARCHES*SEARCH*CHILDREN*CHILD";
+	var $Cname_key = "*FAMILYTREE*SEARCHES*SEARCH*CHILDREN*CHILD*NAME*FORM*FULLTEXT";
+	var $Cevent_key = "*FAMILYTREE*SEARCHES*SEARCH*CHILDREN*CHILD*EVENTS*EVENT";
+	var $Cdate_key = "*FAMILYTREE*SEARCHES*SEARCH*CHILDREN*CHILD*EVENTS*EVENT*DATE*ORIGINAL";
+	var $Cplace_key = "*FAMILYTREE*SEARCHES*SEARCH*CHILDREN*CHILD*EVENTS*EVENT*PLACE*ORIGINAL";
+	var $Cgender_key = "*FAMILYTREE*SEARCHES*SEARCH*CHILDREN*CHILD*GENDER";
 	
 	var $people_array = array();
 	
@@ -48,10 +53,20 @@ class SearchParser {
 		if ($this->current_tag==$this->event_key) $this->current_attrs = $attrs;
 		if ($this->current_tag==$this->result_key) {
 			$this->current_person = new SearchPerson();
+			$this->current_person->id = $attrs['REF'];
 		}
-		if ($this->current_tag==$this->Pperson_key) $this->current_parent = new SearchPerson();
-		if ($this->current_tag==$this->Sperson_key) $this->current_spouse = new SearchPerson();
-		if ($this->current_tag==$this->Cperson_key) $this->current_child = new SearchPerson();
+		if ($this->current_tag==$this->Pperson_key) {
+			$this->current_parent = new SearchPerson();
+			$this->current_person->id = $attrs['REF'];
+		}
+		if ($this->current_tag==$this->Sperson_key) {
+			$this->current_spouse = new SearchPerson();
+			$this->current_person->id = $attrs['REF'];
+		}
+		if ($this->current_tag==$this->Cperson_key) {
+			$this->current_child = new SearchPerson();
+			$this->current_person->id = $attrs['REF'];
+		}
 		$this->contents = "";
 	}
 
@@ -142,6 +157,8 @@ class SearchPerson {
 	var $marriageDate;
 	var $marriagePlace;
 	var $gender;
+	var $version;
+	var $id;
 	var $spouses = array();
 	var $parents = array();
 	var $children = array();
@@ -188,7 +205,9 @@ class SearchPerson {
 			if (!is_null($place)) $deathPlace = $place->getNormalized();
 		}
 		
+		$this->id = $xperson->getID();
 		$this->birthDate = $birthDate;
+		$this->version= $xperson->getVersion();
 		$this->birthPlace = $birthPlace;
 		$this->personName = $xperson->getPrimaryName()->getFullText();
 		$this->deathDate = $deathDate;

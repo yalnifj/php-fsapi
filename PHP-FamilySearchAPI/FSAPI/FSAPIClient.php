@@ -23,6 +23,11 @@
  * @author Joseph Phalouka
  */
 
+if (stristr($_SERVER["SCRIPT_NAME"], basename(__FILE__))!==false) {
+	print "You cannot access an include file directly.";
+	exit;
+}
+
 if (!defined('HTTP_REQUEST_METHOD_GET')) include_once('HTTP/Request.php');
 include_once('ErrorParser.php');
 include_once('NameParser.php');
@@ -56,7 +61,8 @@ class FamilySearchAPIClient {
 	'getUserById'	=>   '/familytree/v1/user/',
 	'getName'	=>	'/familytree/v1/name?',
 	'matchById'		=>	'/familytree/v1/match/',
-	'matchByQuery'	=>	'/familytree/v1/match?'
+	'matchByQuery'	=>	'/familytree/v1/match?',
+	'mergePerson' => '/familytree/v1/person/'
 	);
 
 	/**

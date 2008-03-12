@@ -168,7 +168,8 @@ class XmlGedcom {
 		xml_set_element_handler($xml_parser, "startElement", "endElement");
 		xml_set_character_data_handler($xml_parser, "data");
 		if (!xml_parse($xml_parser, $xml)) {
-			print "problems parsing XML";
+			printf("XML error: %s at line %d", xml_error_string(xml_get_error_code($xml_parser)), xml_get_current_line_number($xml_parser));
+			print "problems parsing the following XML<br /><br />".htmlentities($xml);
 		}
 		xml_parser_free($xml_parser);
 	}
@@ -364,6 +365,9 @@ class XmlGedcom {
 				if (!empty($type)) {
 					$id = array('type'=>$type, 'id'=>$factObj->getDetail());
 					$NewXGPerson->addAlternateId($id);
+				}
+				if ($type=="FamilySearch") {
+					$NewXGPerson->setID($factObj->getDetail());
 				}
 			}
 			
@@ -599,6 +603,7 @@ class XmlGedcom {
 	//function for each relevent open element of XML
 	function openError($attrs) {
 		$this->error = new XG_Error();
+		$this->error->setCode($attrs["CODE"]);
 	}
 	function openNote($attrs){
 		$class = end($this->tagStack); //get the object from the top of the stack
@@ -1090,7 +1095,7 @@ class XG_Gender extends XG_Assertion{
 		$xml.="<gender";
 		if (!$forAdd) {
 			$xml.=" version=\"".$this->version."\" modified=\"".$this->modified."\" ";
-			$xml.="disputing=\"".$this->disputing."\" contributor=\"".$this->contributor."\"";
+			$xml.="disputing=\"".($this->disputing==false?"false":"true")."\" contributor=\"".$this->contributor."\"";
 		}
 		$xml.=">\n";
 		if(!empty($this->citations)){
@@ -1177,7 +1182,7 @@ class XG_Name extends XG_Assertion {
 		$xml = "<name type=\"Name\" ";
 		if (!$forAdd) {
 			$xml.="version=\"".$this->version."\" modified=\"".$this->modified."\" ";
-			$xml.="id=\"".$this->id."\" disputing=\"".$this->disputing."\" contributor=\"".$this->contributor."\"";
+			$xml.="id=\"".$this->id."\" disputing=\"".($this->disputing==false?"false":"true")."\" contributor=\"".$this->contributor."\"";
 		}
 		$xml.=">\n";
 		if(!empty($this->citations)){
@@ -2262,6 +2267,10 @@ class XG_Ordinance extends XG_Assertion{
 
 	//Functions
 
+	function getAssertionType() {
+		return $this->type;
+	}
+
 	function getIndiGedcom(){
 
 		$personId = "";
@@ -2369,7 +2378,7 @@ class XG_Ordinance extends XG_Assertion{
 		$xml.="<ordinance type=\"".$this->type."\" scope=\"".$this->scope."\"";
 		if (!$forAdd) {
 			$xml.=" version=\"".$this->version."\" modified=\"".$this->modified."\" ";
-			$xml.="id=\"".$this->id."\" disputing=\"".$this->disputing."\" contributor=\"".$this->contributor."\"";
+			$xml.="id=\"".$this->id."\" disputing=\"".($this->disputing==false?"false":"true")."\" contributor=\"".$this->contributor."\"";
 		}
 		$xml .=">\n";
 		if(!empty($this->citations)){
@@ -2665,6 +2674,7 @@ class XG_Assertion {
 			$gedcom .= ($gcLevel+1)." DATE ".$date."\r\n";
 			$gedcom .= ($gcLevel+2)." TIME ".$time."\r\n";
 			$gedcom .= ($gcLevel+1)." VERS ".$this->getVersion()."\r\n";
+			$gedcom .= ($gcLevel+1)." _FSID ".$this->getId()."\r\n";
 			if (!is_null($this->contributor)) $gedcom .= $this->contributor->getGedcom($gcLevel+1);
 		}
 		return $gedcom;
@@ -2676,6 +2686,13 @@ class XG_Assertion {
 
 	function getFamSGedcom($isMale = true){
 		return "";
+	}
+
+	function getAssertionType() {
+		return substr(get_class($this), 3);
+		/* events, facts, ordinances*/
+		
+		/*christa Edited */
 	}
 
 }
@@ -2875,7 +2892,7 @@ class XG_Relationship extends XG_Assertion{
 		$xml='';
 		if ($forAdd) return $xml;
 		$xml.="<relationship scope=\"".$this->scope."\" version=\"".$this->version."\" modified=\"".$this->modified."\" ";
-		$xml.="id=\"".$this->id."\" disputing=\"".$this->disputing."\" contributor=\"".$this->contributor."\">\n";
+		$xml.="id=\"".$this->id."\" disputing=\"".($this->disputing==false?"false":"true")."\" contributor=\"".$this->contributor."\">\n";
 		if(!empty($this->citations)){
 			$xml.="<citations>\n";
 			foreach($this->citations as $citation){
@@ -3038,7 +3055,7 @@ class XG_Fact extends XG_Assertion{
 		$xml.="<fact type=\"".$this->type."\" scope=\"".$this->scope."\"";
 		if (!$forAdd) {
 			$xml .=" version=\"".$this->version."\" ";
-			$xml.="modified=\"".$this->modified."\" id=\"".$this->id."\" disputing=\"".$this->disputing."\" contributor=\"".$this->contributor."\"";
+			$xml.="modified=\"".$this->modified."\" id=\"".$this->id."\" disputing=\"".($this->disputing==false?"false":"true")."\" contributor=\"".$this->contributor."\"";
 		}
 		$xml.=">\n";
 		if(!empty($this->citations)){
@@ -3169,6 +3186,10 @@ class XG_Fact extends XG_Assertion{
 	}
 
 	//Functions
+
+	function getAssertionType() {
+		return $this->type;
+	}
 
 	function getIndiGedcom(){
 
@@ -3310,6 +3331,10 @@ class XG_Event extends XG_Assertion{
 	var $result="";
 
 	var $famsEventHandler=array();
+	
+	function getAssertionType() {
+		return $this->type;
+	}
 
 	/**
 	 * Override the setPerson method for events, this allows the setting of specific person events
@@ -3328,7 +3353,7 @@ class XG_Event extends XG_Assertion{
 		$xml.="<event type=\"".$this->type."\" scope=\"".$this->scope."\"";
 		if (!$forAdd) {
 			$xml.=" version=\"".$this->version."\" modified=\"".$this->modified."\" ";
-			$xml.="id=\"".$this->id."\" disputing=\"".$this->disputing."\" contributor=\"".$this->contributor."\"";
+			$xml.="id=\"".$this->id."\" disputing=\"".($this->disputing==false?"false":"true")."\" contributor=\"".$this->contributor."\"";
 		}
 		$xml.=">\n";
 		if(!empty($this->citations)){

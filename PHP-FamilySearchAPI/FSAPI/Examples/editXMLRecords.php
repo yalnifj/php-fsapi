@@ -1,6 +1,6 @@
 <?php
 
-/*
+/**
  * PHP FamilySearch API Client
  * Copyright (C) 2007  Neumont University
  *
@@ -21,7 +21,7 @@
  * @author Chris Hill
  */
 
-/*
+/**
  * This code is commented to aid the developer understand exactly how to interact with the XML record format
  * of Family Search.  Before you attempt to modify any records at family search, it is suggested that you
  * log into family search and create some records.  The login information is as follows:
@@ -33,24 +33,44 @@
  * This information can also be found in the config.php located at:
  * /modules/FamilySearch/config.php
  * 
- * recordID="KW3B-KS2"
+ * recordID="KW3B-KS2" or "KW31-8YH"
  */
 chdir('../'); // By changing the active directory up one, we make it easier to locate the required files such as FamilySearch Proxy.php 
 include_once '../../config.php'; // This provides the login information in a central location.  If it changes, a single update is needed instead of multiple updates
 include_once 'FamilySearchProxy.php'; // This provides the connection and the ability to retrieve, update and create new FamilySearch records.
 session_start(); // Starts the session so any refresh of the page brings up the same record that was previously requested
 $results; // Stores the results of the record request after it has been converted using the htmlentities function of php (http://www.php.net/manual/en/function.htmlentities.php)
-
-$proxy=new FamilySearchProxy($FS_CONFIG['family_search_url'], $FS_CONFIG['family_search_username'], $FS_CONFIG['family_search_password'], $FS_CONFIG['family_search_key']); // Creates a new instance of the FamilySearchProxy and provides the login information from the config.php referenced on line 16.
+global $proxy;
 	
 	if(!empty($_POST['id'])) // This sets the session variable to the value entered by the user.  This allows us to reload the data when the page is refreshed
 	{
 		$_SESSION['fsID']=$_POST['id'];
-	}
 
+}
+
+if(empty($_SESSION['loginID']) && !empty($_POST['loginID']) && empty($_SESSION['password']) && !empty($_POST['password']))
+{
+	$_SESSION['loginID']=$_POST['loginID'];
+	$_SESSION['password']=$_POST['password'];
+}
+else
+{
+	$_SESSION['loginID']=$FS_CONFIG['family_search_username'];
+	$_SESSION['password']=$FS_CONFIG['family_search_password'];
+	}
+$proxy=new FamilySearchProxy($FS_CONFIG['family_search_url'], $_SESSION['loginID'], $_SESSION['password'], $FS_CONFIG['family_search_key']); // Creates a new instance of the FamilySearchProxy and provides the login information from the config.php or the input boxes if they were used.
+
+function getXML()
+{
+	global $proxy;
+	global $FS_CONFIG;
 	if(!empty($_SESSION['fsID'])) // Verifies that if the session variable for the requested record is present it gets the XML data from FamilySearch
 	{
 		$xml=$proxy->getPersonById($_SESSION['fsID']);
+		$text=htmlentities($xml);  // Some characters have special meaning within HTML.  This converts those characters so they how up properly on the page instead of being handled as the html characters
+		$body=preg_replace('/&gt;&lt;/', '&gt;&#13;&lt;', $text); // regular expression to replace the >< combo by placing a return between them.  Makes it easier to read on the screen as each element is on a seperate line
+	}
+	return $body;
 	}
 
 
@@ -76,62 +96,59 @@ $proxy=new FamilySearchProxy($FS_CONFIG['family_search_url'], $FS_CONFIG['family
 	<head>
 	</head>
 	<body>
-	This sample application shows how the PHP FSAPI to update information within the FamilySearch database.  There are several things that you need before using the full capabilities of this program:
+This sample application shows how the PHP FSAPI to update information
+within the FamilySearch database. There are several things that you need
+before using the full capabilities of this program:
 	<ol>
-	<li>Account on FamilySearch development server (http://ref.dev.usys.org/)</li>
-	<li>Number of a record that you have created on the FamilySearch development server.  You can use KW3B-KS2, but you will not be able to save changes</li>
+	<li>Account on FamilySearch development server
+	(http://ref.dev.usys.org/). &nbsp; If you do not have one, leave the name and password blank.</li>
+	<li>Number of a record that you have created on the FamilySearch
+	development server. You can use KW3B-KS2, but you will not be able to
+	save changes.  Use KW31-8YH, which allows saving the changes with default login information</li>
 	<li>Persistent connection to the Internet</li>
 	</ol>
 	<p />
 		<table>
 			<tr>
-				<td>
-					<center>
+		<td colspan="2">
 					<!-- This form is the entry point for retrieving the XML record -->
 						<form action="editXMLRecords.php" method="post"> 
-						Family Search Record ID: <input type="text" name="id" />
-						<input type="submit" value="Get XML Record"/>
-						</form><p />
-					</center>
+		Login ID: <input type="text" name="loginID" /> &nbsp; Password: <input type="password" name="password" /> &nbsp; Record ID: <input type="text" name="id" />
+		</td>
+	</tr>
+	<tr>
+		<td valign="top">
+		<center><input type="submit" value="Get XML Record" /></center>
+		</form>
 				</td>
-				<td>
-					<center>
-						<?php 
+		<td valign="top">
+		<center><?php 
 							if(!empty($results)) // We don't want to see any indication of the results until we have any.  This is minor and I chose this route to help reduce server processing time.
 							{	
 								print "Results of change:"; // The column header text for the change status.
 							}
-						?>
-					</center>
+		?></center>
 				</td>
 			</tr>
 			<tr>
 				<td valign="top">
-					<?php
+		<form action="editXMLRecords.php" method="post"><textarea name="changedXML" rows="38" cols="80"><?php
 						if(!empty($_SESSION['fsID'])) // Makes sure that we have some information to work with beforerunning the code.
 						{
-							$text=htmlentities("$xml");  // Some characters have special meaning within HTML.  This converts those characters so they how up properly on the page instead of being handled as the html characters
-							$body=preg_replace('/&gt;&lt;/', '&gt;&#13;&lt;', $text); // regular expression to replace the >< combo by placing a return between them.  Makes it easier to read on the screen as each element is on a seperate line
-					?>
-						<form action="editXMLRecords.php" method="post">
-						<textarea name="changedXML" rows="40" cols="80"><?php
-						echo preg_replace('/statusMessage=&quot;OK&quot; statusCode=&quot;200&quot;/','', $body); // This removes the text that causes errors when you attempt to save the XML.  It also displays the results from the request within the editable text area of the web page.
+			echo preg_replace('/statusMessage=&quot;OK&quot; statusCode=&quot;200&quot;/','', getXML()); // This removes the text that causes errors when you attempt to save the XML.  It also displays the results from the request within the editable text area of the web page.
 						}
 					?></textarea><br />
-					<center>
-						<input type="hidden" name="action" value="saveXML" /> <!-- A hidden field that is used to trigger the save XML function -->
-						<input type="submit" name="save" value="Save Changes" />
-					</center>
+		<center><input type="hidden" name="action" value="saveXML" /> <!-- A hidden field that is used to trigger the save XML function -->
+		<input type="submit" name="save" value="Save Changes" /></center>
+		
 				</td>
-				<td valign="top" border="3">
-					<?php
+		<td valign="top" border="3"><?php
 					if(!empty($_REQUEST['save']) && $_REQUEST['save']=='Save Changes')
 					{	
 						echo preg_replace('/&gt;&lt;/', '&gt;<br/>&lt;', $results); // This displays the results of the update after inserting a carriage return between the > and <.  It makes it easier to read on the screen when the elements are seperated out
 						//echo $results; // this can be used if you want to see the full message as it is returned from the familysearch update function.  It will keep everything as a single line of text that will wrap as needed
 					}
-					?>
-				</td>
+		?></td>
 			</tr>
 			<tr>
 				<td>
