@@ -121,6 +121,12 @@ class PhpGedViewProxy extends FamilySearchAPIClient {
 			$this->SESSIONID_NAME = $match[1];
 			$this->sessionid = $match[2];
 		}
+		
+		//-- store the id on the session for subsequent API calls
+		if (session_id() != "") {
+			 $_SESSION['phpfsapi_sessionid'] = $this->sessionid;
+			 $_SESSION['phpfsapi_sessionname'] = $this->SESSIONID_NAME;
+		}
 
 		if($errorXML) return $response;
 		else return $this->checkErrors($request->getResponseBody());

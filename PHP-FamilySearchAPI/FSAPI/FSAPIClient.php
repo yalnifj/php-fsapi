@@ -83,6 +83,12 @@ class FamilySearchAPIClient {
 		$this->url = $url;
 		$this->userName = $userName;
 		$this->password = $password;
+		
+		if (isset($_SESSION['phpfsapi_sessionid'])) {
+			$this->sessionid = $_SESSION['phpfsapi_sessionid'];
+			$this->loggedin = true;
+		}
+		if (isset($_SESSION['phpfsapi_sessionname'])) $this->SESSIONID_NAME = $_SESSION['phpfsapi_sessionname'];
 	}
 
 	function setAgent($agent) {
