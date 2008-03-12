@@ -22,6 +22,10 @@
  * @author Hoang Le
  * @author Joseph Phalouka
  */
+if (stristr($_SERVER["SCRIPT_NAME"], basename(__FILE__))!==false) {
+	print "You cannot access an include file directly.";
+	exit;
+}
 
 if (!defined('HTTP_REQUEST_METHOD_GET')) include_once('HTTP/Request.php');
 include_once('ErrorParser.php');

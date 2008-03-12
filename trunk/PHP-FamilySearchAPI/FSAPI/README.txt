@@ -87,7 +87,7 @@ $proxy = new FamilySearchProxy($url, $username, $password, $key);
 
 //call the desire method
 $response = $proxy->getPersonById($id, $query, $parseError);
-print htmlentities($resonse);
+print htmlentities($response);
 
 ?>
 

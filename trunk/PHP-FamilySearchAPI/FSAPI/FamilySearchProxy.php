@@ -23,6 +23,11 @@
  * @author Joseph Phalouka
  */
 
+if (stristr($_SERVER["SCRIPT_NAME"], basename(__FILE__))!==false) {
+	print "You cannot access an include file directly.";
+	exit;
+}
+
 if (!defined('HTTP_REQUEST_METHOD_GET')) {
 	//-- check if we are running as a PGV module
 	if (file_exists('SOAP/HTTP/Request.php')) include_once('SOAP/HTTP/Request.php');
@@ -53,7 +58,8 @@ class FamilySearchProxy extends FamilySearchAPIClient {
 	'getUserById'	=>   '/familytree/v1/user/',
 	'getName'	=>	'/familytree/v1/name?',
 	'matchById'		=>	'/familytree/v1/match/',
-	'matchByQuery'	=>	'/familytree/v1/match?'
+	'matchByQuery'	=>	'/familytree/v1/match?',
+	'mergePerson' => '/familytree/v1/person/'
 	);
 
 	/**
@@ -166,6 +172,13 @@ class FamilySearchProxy extends FamilySearchAPIClient {
 	 */
 	function getPerson($query, $errorXML = true){
 		return $this->getRequestData('', 'getPerson', $query, $errorXML);
+	}
+	
+	/**
+	 * returns the results of a request to merge several records
+	 */
+	function mergePerson($recordsXML, $errorXML = true){
+		return $this->addPerson($recordsXML, $errorXML);
 	}
 
 	/**
