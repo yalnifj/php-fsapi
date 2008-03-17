@@ -156,6 +156,8 @@ class FamilySearchAPIClient {
 		$this->_cookies = null;
 		$this->loggedin = false;
 		$this->sessionid = null;
+		unset($_SESSION['phpfsapi_sessionname']);
+		unset($_SESSION['phpfsapi_sessionid']);
 		return "";
 	}
 
@@ -263,8 +265,8 @@ class FamilySearchAPIClient {
 
 		//create the request object
 		$request = new HTTP_Request();
-		if (is_null($this->_cookies)||is_null($this->sessionid)) $request->setBasicAuth($this->userName, $this->password);
-		else {
+		if (!empty($this->_cookies)||is_null($this->sessionid)) $request->setBasicAuth($this->userName, $this->password);
+		else if (!empty($this->_cookies)) {
 			foreach($this->_cookies as $c=>$cookie) {
 				$request->addCookie($cookie['name'], $cookie['value']);
 			}
@@ -278,11 +280,15 @@ class FamilySearchAPIClient {
 		//print "Getting data at: ".$request->getUrl()."<br />\n";
 
 		if (is_null($this->_cookies)) $this->_cookies = $request->getResponseCookies();
-
+		$response = $request->getResponseBody();
+		if (preg_match("/error code=\"401\"/", $response) && isset($_SESSION['phpfsapi_sessionid'])) {
+			$this->authenticate($errorXML);
+			return $this->getRequestData($id, $type, $query, $errorXML);
+		}
 		if($errorXML) 
-			return $request->getResponseBody();
+			return $response;
 		else {
-			return $this->checkErrors($request->getResponseBody());
+			return $this->checkErrors($response);
 		}
 	}
 
@@ -454,11 +460,15 @@ class FamilySearchAPIClient {
 
 		//send the request and return the xml
 		$request->sendRequest();
-
+		$response = $request->getResponseBody();
+		if (preg_match("/error code=\"401\"/", $response) && isset($_SESSION['phpfsapi_sessionid'])) {
+			$this->authenticate($errorXML);
+			return $this->getRequestData($query, $errorXML);
+		}
 		if($errorXML) 
-			return $request->getResponseBody();
+			return $response;
 		else {
-			return $this->checkErrors($request->getResponseBody());
+			return $this->checkErrors($response);
 		}
 	}
 }
