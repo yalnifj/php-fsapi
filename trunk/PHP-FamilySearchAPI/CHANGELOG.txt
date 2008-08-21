@@ -1,0 +1,3 @@
+This file contains the changes made to this library since the last release.
+
+2008-08-21	Added automatic throttling support, FSAPIClient::setAutoThrottling, FSAPIClient::setMaxRetries
