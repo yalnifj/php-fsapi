@@ -48,6 +48,9 @@ class FamilySearchAPIClient {
 	var $SESSIONID_NAME = "sessionId";
 	var $RETURN_TYPE = "unknown";
 	var $hasError;
+	var $maxRetries = 3;
+	var $currentRetries = 0;
+	var $autoThrottling = true;
 	
 	var $paths = array(
 	'login'		=>	'/identity/v1/login',
@@ -132,6 +135,42 @@ class FamilySearchAPIClient {
 	 */
 	function getReturnType() {
 		return $this->RETURN_TYPE;
+	}
+	
+	/**
+	 * Returns the number of times to attempt each request 
+	 *
+	 * @return int
+	 */
+	function getMaxRetries() {
+		return $this->maxRetries;
+	}
+	
+	/**
+	 * Set the maximum number of times to attemt a request before giving up
+	 *
+	 * @param int $retries
+	 */
+	function setMaxRetries($retries) {
+		$this->maxRetries = $retries;
+	}
+	
+	/**
+	 * Returns whether the proxy class will try to automatically handle throttling
+	 *
+	 * @return boolean
+	 */
+	function getAutoThrottling() {
+		return $this->autoThrottling;
+	}
+	
+	/**
+	 * Set whether this proxy will automatically try to handle throttling or return the error back to the client
+	 *
+	 * @param boolean $throttle
+	 */
+	function setAutoThrottline($throttle) {
+		$this->autoThrottling = $throttle;
 	}
 
 	/**
@@ -281,9 +320,21 @@ class FamilySearchAPIClient {
 
 		if (is_null($this->_cookies)) $this->_cookies = $request->getResponseCookies();
 		$response = $request->getResponseBody();
+		//-- check if authenticated
 		if (preg_match("/error code=\"401\"/", $response) && isset($_SESSION['phpfsapi_sessionid'])) {
-			$this->authenticate($errorXML);
-			return $this->getRequestData($id, $type, $query, $errorXML);
+			if ($this->currentRetries < $this->maxRetries) {
+				$this->currentRetries++;
+				$this->authenticate($errorXML);
+				return $this->getRequestData($id, $type, $query, $errorXML);
+			}
+		}
+		else if (preg_match("/error code=\"503\"/", $response) && isset($_SESSION['phpfsapi_sessionid'])) {
+			if ($this->currentRetries < $this->maxRetries) {
+				$this->currentRetries++;
+				//-- wait 2 seconds and try again
+				sleep(2);
+				return $this->getRequestData($id, $type, $query, $errorXML);
+			}
 		}
 		if($errorXML) 
 			return $response;
