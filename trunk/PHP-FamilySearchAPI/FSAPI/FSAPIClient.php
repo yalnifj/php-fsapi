@@ -304,6 +304,7 @@ class FamilySearchAPIClient {
 
 		//create the request object
 		$request = new HTTP_Request();
+		$request->_useBrackets = false;
 		if (!empty($this->_cookies)||is_null($this->sessionid)) $request->setBasicAuth($this->userName, $this->password);
 		else if (!empty($this->_cookies)) {
 			foreach($this->_cookies as $c=>$cookie) {
@@ -378,6 +379,7 @@ class FamilySearchAPIClient {
 
 		//create the request object
 		$request = new HTTP_Request();
+		$request->_useBrackets = false;
 		if (is_null($this->_cookies)) $request->setBasicAuth($this->userName, $this->password);
 		else {
 			foreach($this->_cookies as $c=>$cookie) {
@@ -442,6 +444,7 @@ class FamilySearchAPIClient {
 
 		//create the request object
 		$request = new HTTP_Request();
+		$request->_useBrackets = false;
 		if (is_null($this->_cookies)) $request->setBasicAuth($this->userName, $this->password);
 		else {
 			foreach($this->_cookies as $c=>$cookie) {
@@ -499,6 +502,7 @@ class FamilySearchAPIClient {
 
 		//create the request object
 		$request = new HTTP_Request();
+		$request->_useBrackets = false;
 		if (is_null($this->_cookies)) $request->setBasicAuth($this->userName, $this->password);
 		else {
 			foreach($this->_cookies as $c=>$cookie) {
