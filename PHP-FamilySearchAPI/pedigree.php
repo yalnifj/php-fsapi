@@ -45,8 +45,7 @@ include_once("FSParse/XMLGEDCOM.php");
 //set the username and password for familysearch
 $username = '';
 $password = '';
-//$url = 'http://ref.dev.usys.org';
-$url = 'https://apibeta.familysearch.org/';
+$url = 'http://www.dev.usys.org';
 $rootId = 'me';
 if (!empty($_REQUEST['rootId'])) $rootId = $_REQUEST['rootId'];
 
@@ -73,17 +72,6 @@ $arr = $xmlGed->getPersons();
 if ($rootId=="me") $person = current($arr);
 else $person = getPerson($rootId);
 
-/*
-$assertions = $person->getAssertions();
-$ordinances = array();
-foreach($assertions as $assertion) {
-	if (get_class($assertion)=='XG_Ordinance') {
-		$ordinances[] = $assertion;
-		print $assertion->getType()." ".$assertion->getTemple();
-	}
-}
-*/
-
 //-------------------------------------- setup some helper functions
 
 /**
@@ -104,23 +92,6 @@ function basicAuthentication($message = '') {
 function &getPerson($id) {
 	global $client, $xmlGed;
 	
-	/* -- because we set the proxy on the $xmlGed object we can ask for a person 
-	//-- get the person's xml data from the API
-	$person = null;
-	$xml = $client->getPersonById($id);
-	
-	//-- parse the XML
-	$xmlGed->parseXML($xml);
-	if (!empty($xmlGed->error)) {
-		//var_dump($xmlGed->error);
-		if ($xmlGed->error->getCode()==401) basicAuthentication($xmlGed->error->getMessage());
-		else {
-			print "<b style=\"color:red;\">".$xmlGed->error->getMessage()."</b><br />";
-			print htmlentities($xml);
-			exit;
-		}
-	}
-	*/
 	//-- get the person, which would normally be the first person in the array
 	$person = $xmlGed->getPerson($id);
 	return $person;
