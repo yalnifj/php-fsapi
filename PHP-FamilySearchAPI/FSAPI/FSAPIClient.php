@@ -55,17 +55,18 @@ class FamilySearchAPIClient {
 	var $paths = array(
 	'login'		=>	'/identity/v1/login',
 	'logout'	=>	'/identity/v1/logout',
-	'getPerson'	=>     '/familytree/v1/search',
-	'getPersonById'	=> '/familytree/v1/person/',
-	'addPerson'	=> 'familytree/v1/person',
-	'updatePersonById'	=> '/familytree/v1/person/',
-	'getPlace'	=>	   '/familytree/v1/place?',
-	'getPlaceById'	=>  '/familytree/v1/place/',
-	'getUserById'	=>   '/familytree/v1/user/',
-	'getName'	=>	'/familytree/v1/name?',
-	'matchById'		=>	'/familytree/v1/match/',
-	'matchByQuery'	=>	'/familytree/v1/match?',
-	'mergePerson' => '/familytree/v1/person/'
+	'getPerson'	=>     '/familytree/v2/search',
+	'getPersonById'	=> '/familytree/v2/person/',
+	'addPerson'	=> 'familytree/v2/person',
+	'updatePersonById'	=> '/familytree/v2/person/',
+	'getPlace'	=>	   '/familytree/v2/place?',
+	'getPlaceById'	=>  '/familytree/v2/place/',
+	'getUserById'	=>   '/familytree/v2/user/',
+	'getName'	=>	'/familytree/v2/name?',
+	'matchById'		=>	'/familytree/v2/match/',
+	'matchByQuery'	=>	'/familytree/v2/match?',
+	'mergePerson' => '/familytree/v2/person/',
+	'addRelationship' => '/familytree/v2/person/'
 	);
 
 	/**
@@ -250,6 +251,16 @@ class FamilySearchAPIClient {
 		}
 		return $this->getRequestData('', 'matchByQuery', $query, $errorXML);
 	}
+	
+	/**
+	 * Try to match a person from a query string
+	 * @param $query	the query string
+	 * @param $errorXML
+	 * @return string	an xml string of the resulting data
+	 */
+	function matchByQuery($query, $errorXML=true) {
+		return $this->getRequestData('', 'matchByQuery', $query, $errorXML);
+	}
 
 	/**
 	 * A generic method that provide all the "GET" methods that are provided by the FS API
@@ -276,7 +287,7 @@ class FamilySearchAPIClient {
 
 		$this->hasError = false;
 		//check the current url
-		if(empty($this->url) || empty($this->userName) || empty($this->password)){
+		if(empty($this->url)  || !$this->loggedin){
 			$this->hasError = true;
 			return "connection string is not set or authentication required";
 		}
@@ -333,6 +344,7 @@ class FamilySearchAPIClient {
 			if ($this->currentRetries < $this->maxRetries) {
 				$this->currentRetries++;
 				//-- wait 2 seconds and try again
+				print "throttled waiting... ";
 				sleep(2);
 				return $this->getRequestData($id, $type, $query, $errorXML);
 			}
@@ -362,7 +374,7 @@ class FamilySearchAPIClient {
 
 		$this->hasError = false;
 		//check the current url
-		if(empty($this->url) || empty($this->userName) || empty($this->password)){
+		if(empty($this->url)  || !$this->loggedin){
 			$this->hasError = true;
 			return "connection string is not set or authentication required";
 		}
@@ -380,18 +392,69 @@ class FamilySearchAPIClient {
 		//create the request object
 		$request = new HTTP_Request();
 		$request->_useBrackets = false;
-		if (is_null($this->_cookies)) $request->setBasicAuth($this->userName, $this->password);
-		else {
-			foreach($this->_cookies as $c=>$cookie) {
-				$request->addCookie($cookie['name'], $cookie['value']);
-			}
-		}
 		$request->addHeader("User-Agent", $this->agent);
 		$request->addHeader("Content-Type", "text/xml");
 		$request->setURL($con);
 		$request->setMethod(HTTP_REQUEST_METHOD_POST);
 		$request->setBody($person);
 		//print "<br /><pre>".$request->_buildRequest()."</pre>\n";
+		//var_dump($request);
+
+		//send the request and return the xml
+		$request->sendRequest();
+
+		if($errorXML) 
+			return $request->getResponseBody();
+		else {
+			return $this->checkErrors($request->getResponseBody());
+		}
+
+	}
+	
+	/**
+	 * Add a relationship to a remote person
+	 * @see https://devnet.familysearch.org/docs/api-manual-reference-system/familytree-v2/examples/person.html/document_view
+	 * @param $fsid	the id of the person to add the relationship to
+	 * @param $type	the type of the relationship, (parent, child, spouse)
+	 * @param $relatedid	the id of the person being related to
+	 * @param $xml		the xml payload
+	 * @param $errorXML
+	 * @return string	the xml response
+	 */
+	function addRelationship($fsid, $type, $relatedid, $xml, $errorXML = true){
+		//-- check that we are loggedin
+		if (!$this->loggedin) {
+			$result = $this->authenticate($errorXML);
+			if (!$this->loggedin) return $result;
+		}
+
+		$this->hasError = false;
+		//check the current url
+		if(empty($this->url)  || !$this->loggedin){
+			$this->hasError = true;
+			return "connection string is not set or authentication required";
+		}
+
+		$con = '';
+		//build the connection string
+		$con = $this->url.$this->paths['addPerson'];
+		$con .= "/".$fsid."/".$type."/".$relatedid;
+		
+		$sep = '?';
+		if (strpos($con, $sep)!==false) $sep = "&";
+		
+		//-- add the session id
+		$con .= $sep.$this->SESSIONID_NAME."=".$this->sessionid;
+		//print $con ."\n";
+		
+		//create the request object
+		$request = new HTTP_Request();
+		$request->addHeader("User-Agent", $this->agent);
+		$request->addHeader("Content-Type", "text/xml");
+		$request->setURL($con);
+		$request->setMethod(HTTP_REQUEST_METHOD_POST);
+		$request->setBody($xml);
+		//print "<br /><pre>".htmlentities($request->_buildRequest())."</pre>\n";
 		//var_dump($request);
 
 		//send the request and return the xml
@@ -427,7 +490,7 @@ class FamilySearchAPIClient {
 
 		$this->hasError = false;
 		//check the current url
-		if(empty($this->url) || empty($this->userName) || empty($this->password)){
+		if(empty($this->url)  || !$this->loggedin){
 			$this->hasError = true;
 			return "connection string is not set or authentication required";
 		}
@@ -487,7 +550,7 @@ class FamilySearchAPIClient {
 
 		$this->hasError = false;
 		//check the current url
-		if(empty($this->url) || empty($this->userName) || empty($this->password)){
+		if(empty($this->url) || !$this->loggedin){
 			$this->hasError = true;
 			return "connection string is not set or authentication required";
 		}
@@ -503,12 +566,6 @@ class FamilySearchAPIClient {
 		//create the request object
 		$request = new HTTP_Request();
 		$request->_useBrackets = false;
-		if (is_null($this->_cookies)) $request->setBasicAuth($this->userName, $this->password);
-		else {
-			foreach($this->_cookies as $c=>$cookie) {
-				$request->addCookie($cookie['name'], $cookie['value']);
-			}
-		}
 		$request->addHeader("User-Agent", $this->agent);
 		$request->setURL($con);
 		if ($this->DEBUG) print "<br /><pre>".$request->_buildRequest()."</pre>\n";

@@ -37,7 +37,7 @@
  */
 
 ini_set('error_reporting', E_ALL);
-ini_set('include_path', ini_get('include_path').";./FSAPI");
+ini_set('include_path', ini_get('include_path').PATH_SEPARATOR."./FSAPI");
 
 include_once("FSAPI/FamilySearchProxy.php");
 include_once("FSParse/XMLGEDCOM.php");
@@ -72,6 +72,17 @@ $arr = $xmlGed->getPersons();
 if ($rootId=="me") $person = current($arr);
 else $person = getPerson($rootId);
 
+/*
+$assertions = $person->getAssertions();
+$ordinances = array();
+foreach($assertions as $assertion) {
+	if (get_class($assertion)=='XG_Ordinance') {
+		$ordinances[] = $assertion;
+		print $assertion->getType()." ".$assertion->getTemple();
+	}
+}
+*/
+
 //-------------------------------------- setup some helper functions
 
 /**
@@ -92,6 +103,23 @@ function basicAuthentication($message = '') {
 function &getPerson($id) {
 	global $client, $xmlGed;
 	
+	/* -- because we set the proxy on the $xmlGed object we can ask for a person 
+	//-- get the person's xml data from the API
+	$person = null;
+	$xml = $client->getPersonById($id);
+	
+	//-- parse the XML
+	$xmlGed->parseXML($xml);
+	if (!empty($xmlGed->error)) {
+		//var_dump($xmlGed->error);
+		if ($xmlGed->error->getCode()==401) basicAuthentication($xmlGed->error->getMessage());
+		else {
+			print "<b style=\"color:red;\">".$xmlGed->error->getMessage()."</b><br />";
+			print htmlentities($xml);
+			exit;
+		}
+	}
+	*/
 	//-- get the person, which would normally be the first person in the array
 	$person = $xmlGed->getPerson($id);
 	return $person;

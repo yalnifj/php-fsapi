@@ -30,7 +30,7 @@
 
 /**
  * Set the GEDCOM compliance level for the GEDCOM to be generated.
- * Possible values are 5.5 or 5.6.  Setting to 5.5 will produce the 
+ * Possible values are 5.5 or 5.6.  Setting to 5.5 will produce the
  * most compatible GEDCOM for use with other programs.  Using 5.6 will
  * ensure the least amount of data loss.
  */
@@ -45,6 +45,7 @@ class XmlGedcom {
 
 	var $persons = array();
 	var $handler = array(); // store method names
+	var $namehandler = array();
 	var $tagStack = array(); //store
 	var $lastTagName;
 	var $lastType;
@@ -52,7 +53,8 @@ class XmlGedcom {
 	var $proxy = null;
 	var $xml;
 	var $tempId = null;
-	
+	var $matches = array();
+
 	var $gedcomRecords = array();
 
 	/**
@@ -63,23 +65,35 @@ class XmlGedcom {
 		$this->handler["NOTE"]["tag"] = "openNote";
 		$this->handler["CITATION"]["tag"] = "openCitation";
 		$this->handler["PERSON"]["tag"] = "openPerson";
+		$this->handler["FAMILY"]["tag"] = "openFamily";
+		$this->handler["COUPLE"]["tag"] = "openFamily";
+		$this->handler["MATCH"]["tag"] = "openMatch";
+		$this->handler["SEARCH"]["tag"] = "openMatch";
 		$this->handler["CHILD"]["tag"] = "openChild";
 		$this->handler["PARENT"]["tag"] = "openParent";
 		$this->handler["SPOUSE"]["tag"] = "openSpouse";
 		$this->handler["ORDINANCE"]["tag"] = "openOrdinance";
 		$this->handler["FACT"]["tag"] = "openFact";
 		$this->handler["EVENT"]["tag"] = "openEvent";
+		$this->handler["CHARACTERISTIC"]["tag"] = "openCharacteristic";
+		$this->handler["MARRIAGE"]["tag"] = "openEvent";
 		$this->handler["RELATIONSHIP"]["tag"] = "openRelationship";
 		$this->handler["NAME"]["tag"] = "openName";
 		$this->handler["GENDER"]["tag"] = "openGender";
 		$this->handler["PLACE"]["tag"] = "openPlace";
 		$this->handler["DATE"]["tag"] = "openDate";
+		$this->handler["SELECTED"]["tag"] = "openSelected";
 		$this->handler["FORM"]["tag"] = "openForm";
 		$this->handler["PIECES"]["tag"] = "openPieces";
 		$this->handler["CONTRIBUTOR"]["tag"] = "openContributor";
 		$this->handler["ERROR"]["tag"] = "openError";
 		$this->handler["NS2:ERROR"]["tag"] = "openError";
 		$this->handler["ID"]["tag"] = "openId";
+		$this->handler["XG_EVENT:VALUE"]["tag"] = "openEventValue";
+		$this->handler["XG_ORDINANCE:VALUE"]["tag"] = "openEventValue";
+		$this->handler["XG_CHARACTERISTIC:VALUE"]["tag"] = "openEventValue";
+		$this->handler["XG_NAME:VALUE"]["tag"] = "openEventValue";
+		$this->handler["XG_GENDER:VALUE"]["tag"] = "openEventValue";
 
 		$this->handler["NOTE"]["data"] = "dataNote";
 		$this->handler["CITATION"]["data"] = "dataCitation";
@@ -97,19 +111,29 @@ class XmlGedcom {
 		$this->handler["CODE"]["data"] = "dataCode";
 		$this->handler["ID"]["data"] = "dataId";
 		$this->handler["LIVING"]["data"] = "dataLiving";
+		$this->handler["SCORE"]["data"] = "dataScore";
+		$this->handler["CONFIDENCE"]["data"] = "dataConfidence";
+		$this->handler["DISPOSITION"]["data"] = "dataDisposition";
+		$this->handler["TEMPLE"]["data"] = "dataTemple";
+		$this->handler["MINBIRTHYEAR"]["data"] = "dataMinYear";
+		$this->handler["MAXDEATHYEAR"]["data"] = "dataMaxYear";
+		$this->handler["TYPE"]["data"] = "dataType";
+		$this->handler["MODIFIED"]["data"] = "dataModified";
+		$this->handler["MODIFIABLE"]["data"] = "dataModifiable";
 		//-- for summary gender
 		$this->handler["GENDER"]["data"] = "valueGender";
+		$this->handler["SELECTED"]["data"] = "dataSelected";
 
 		$this->handler["xg_gender"] = "valueGender";
 		$this->handler["xg_namepieces"] = "valuePieces";
 
-		$this->handler["prefix"] = "piecePrefix";
-		$this->handler["suffix"] = "pieceSuffix";
-		$this->handler["given"] = "pieceGiven";
-		$this->handler["family"] = "pieceFamily";
-		$this->handler["other"] = "pieceOther";
+		$this->namehandler["prefix"] = "piecePrefix";
+		$this->namehandler["suffix"] = "pieceSuffix";
+		$this->namehandler["given"] = "pieceGiven";
+		$this->namehandler["family"] = "pieceFamily";
+		$this->namehandler["other"] = "pieceOther";
 	}
-	
+
 	/**
 	 * returns an array of all of the persons who were parsed from the XML
 	 *
@@ -119,13 +143,17 @@ class XmlGedcom {
 		return $this->persons;
 	}
 
+	function getMatches() {
+		return $this->matches;
+	}
+
 	/**
 	 * Get an XG_Person object for the person with the given ID that has been parsed from XML
 	 *
 	 * @param string $id
 	 * @return XG_Person
 	 */
-	function &getPerson($id) {
+	function &getPerson($id, $summary='summary') {
 		$person = null;
 		//print "|$id|";
 		//foreach($this->persons as $key=>$p) print "[$key] ";
@@ -133,11 +161,18 @@ class XmlGedcom {
 			return $this->persons[$id];
 		}
 		if ($this->proxy!=null) {
-			$result = $this->proxy->getPersonById($id,"view=summary");
+			$query = "families=$summary&events=$summary&children=all&properties=$summary&parents=$summary";
+			if ($summary=='all') $query.="&ordinances=all&names=all&genders=all&characteristics=all&properties=all&identifiers=all&contributor=all";
+			$result = $this->proxy->getPersonById($id,$query);
+			//		print htmlentities($result);
 			$this->parseXml($result);
 			if (!empty($this->error)) {
+				throw new Exception($this->error->getMessage());
 				print "<b style=\"color:red;\">".$this->error->getMessage()."</b><br />";
-				print htmlentities($result);
+				if ($this->error->code!=401) {
+					debug_print_backtrace();
+					print htmlentities($result);
+				}
 			}
 			if (isset($this->persons[$id])) return $this->persons[$id];
 		}
@@ -163,6 +198,7 @@ class XmlGedcom {
 	 * @param String $xml - xml as one solid string
 	 */
 	function parseXml($xml){
+		//		print htmlentities($xml);
 		$xml_parser = xml_parser_create();
 		@xml_set_object($xml_parser, $this);
 		xml_set_element_handler($xml_parser, "startElement", "endElement");
@@ -202,7 +238,7 @@ class XmlGedcom {
 		}
 		return $gedcom;
 	}
-	
+
 	/**
 	 * Gets a GEDCOM record for the given GEDCOM id
 	 * This is a convenience method for working with the resulting GEDCOM
@@ -215,20 +251,28 @@ class XmlGedcom {
 		if (isset($this->gedcomRecords[$id])) return $this->gedcomRecords[$id];
 		$gedcom = "";
 		if ($id{0}=="I") $id = substr($id, 1);
+		//-- family wasn't cached so grab it from one of the spouses
+		else if ($id{0}=="F") {
+			$oldid = $id;
+			$id = substr($id, 1, strpos($id, '+', 2)-1);
+			//			print $id;
+		}
 		$person = $this->getPerson($id);
 		if (!is_null($person)) {
-			$gedcom = $person->getIndiGedcom();
-			$this->gedcomRecords[$id] = $gedcom;
-			$this->gedcomRecords["I".$id] = $gedcom;
-			
 			$fams = $person->getFamCGedcom();
 			foreach($fams as $fam) {;
-				$this->gedcomRecords[$fam['id']] = $fam['gedcom'];
+			$this->gedcomRecords[$fam['id']] = $fam['gedcom'];
 			}
 			$fams = $person->getFamSGedcom();
 			foreach($fams as $fam) {;
-				$this->gedcomRecords[$fam['id']] = $fam['gedcom'];
+			$this->gedcomRecords[$fam['id']] = $fam['gedcom'];
 			}
+				
+			$gedcom = $person->getIndiGedcom();
+			$this->gedcomRecords[$id] = $gedcom;
+			$this->gedcomRecords["I".$id] = $gedcom;
+			//-- we originally wanted a family record
+			if (isset($oldid) && isset($this->gedcomRecords[$oldid])) $gedcom = $this->gedcomRecords[$oldid];
 		}
 		return $gedcom;
 	}
@@ -242,10 +286,11 @@ class XmlGedcom {
 	function buildSearchQuery(&$person, $type = '') {
 		if(!is_object($person)) return "";
 		$id = $person->getXref();	//get the individual's id
-		$personName = $person->getGivenNames();
-		$query = $type."givenName=".urlencode($personName);
-		$personName = $person->getSurname();
-		$query .= "&".$type."familyName=".urlencode($personName);
+		$personName = $person->getFactByType("NAME");
+		$givenName = $personName->getValue("GIVN");
+		$query = $type."givenName=".urlencode($givenName);
+		$surname = $personName->getValue("SURN");
+		$query .= "&".$type."familyName=".urlencode($surname);
 		$birthdate = $person->getBirthDate(false);
 		if (!empty($birthdate)) $query.="&".$type."birthDate=".urlencode($birthdate->date1->Format("A O E"));
 		$birthPlace = $person->getBirthPlace();
@@ -254,25 +299,25 @@ class XmlGedcom {
 		if (!empty($deathdate)) $query.="&".$type."deathDate=".urlencode($deathdate->date1->Format("A O E"));
 		$deathPlace = $person->getDeathPlace();
 		if (!empty($deathPlace)) $query.="&".$type."deathPlace=".urlencode($deathPlace);
-		
+
 		if (!empty($type)) return $query;
-		
+
 		$gender = $person->getSex();
 		if ($gender=='M') $query.="&".$type."gender=male";
 		if ($gender=='F') $query.="&".$type."gender=female";
-		
+
 		$spouse = $person->getCurrentSpouse();
 		if (!is_null($spouse)) {
 			$query .= "&".XmlGedcom::buildSearchQuery($spouse, 'spouse.');
 		}
-		
+
 		$family = $person->getPrimaryChildFamily();
 		if (!is_null($family)) {
 			$father = $family->getHusband();
 			if (!is_null($father)) {
 				$query .= "&".XmlGedcom::buildSearchQuery($father, 'father.');
 			}
-			
+				
 			$mother = $family->getWife();
 			if (!is_null($mother)) {
 				$query .= "&".XmlGedcom::buildSearchQuery($mother, 'mother.');
@@ -282,7 +327,90 @@ class XmlGedcom {
 		return $query;
 	}
 
-	/** 
+	/**
+	 * 
+	 * @param $factObj Event
+	 * @param $NewXGPerson XG_Person
+	 * @return XG_Assertion
+	 */
+	function &convertGedcomEvent(&$factObj, &$NewXGPerson) {
+		global $eventHandler, $ordinanceHandler, $factHandler;
+		$XGAssertion = null;
+		$person_class = $factObj->getParentObject();
+		if ($factObj->getTag()=='NAME') {
+			$XGAssertion = new XG_Name();
+			$namerec = $factObj->getGedComRecord();
+			if ($NewXGPerson) $XGAssertion->setPerson($NewXGPerson);
+			$XGAssertion->addRecordInfo($namerec, $person_class);
+			$XGForm = new XG_Form();
+			$XGNamePiece = new XG_NamePieces();
+			$XGNamePiece->addFamily(get_gedcom_value("SURN",2,$namerec,'',false));
+			$XGNamePiece->AddGiven(get_gedcom_value("GIVN",2,$namerec,'',false));
+			$XGNamePiece->AddPrefix(get_gedcom_value("PREN",2,$namerec,'',false));
+			$XGNamePiece->AddSuffix(get_gedcom_value("SUFN",2,$namerec,'',false));
+			$XGForm->setFullText(preg_replace("~/~", "", get_gedcom_value("NAME",1,$namerec,'',false)));
+			$XGForm->setPieces($XGNamePiece);
+			$XGAssertion->addForm($XGForm);
+		}
+		if ($factObj->getTag()=='SEX') {
+			/* XG_Gender */
+			$XGAssertion = new XG_Gender();
+			$genderec = $factObj->getGedComRecord();
+			if ($person_class->getSex()=="M") $XGAssertion->setGender("Male");
+			else if ($person_class->getSex()=="F") $XGAssertion->setGender("Female");
+			else $XGAssertion->setGender("Unknown");
+			if ($NewXGPerson) $XGAssertion->setPerson($NewXGPerson);
+			$XGAssertion->addRecordInfo($genderec, $person_class);
+		}
+			$factrec = $factObj->getGedcomRecord();
+			$fact = $factObj->getTag();
+			if ($fact=='SSN') return null;
+			/* XG_Event*/
+			$xmltype = array_search($fact, $eventHandler);
+			if ($xmltype!==false) {
+				$XGAssertion = new XG_Event();
+				if ($NewXGPerson) $XGAssertion->setPerson($NewXGPerson);
+				$XGAssertion->addType($factrec, $person_class, $xmltype);
+				$XGAssertion->addDate($factrec, $person_class);
+				$XGAssertion->addPlace($factrec, $person_class);
+				$XGAssertion->addSpouse($factrec, $person_class);
+				$XGAssertion->addScope($factrec, $person_class);
+				$XGAssertion->addTitle($factrec, $person_class);
+				$XGAssertion->addRecordInfo($factrec, $person_class);
+				$XGAssertion->setDescription($factObj->getDetail());
+			}
+
+			/* XG_Ordinance */
+			$xmltype = array_search($fact, $ordinanceHandler);
+			if($xmltype!==false) {
+				$XGAssertion = new XG_Ordinance();
+				if ($NewXGPerson) $XGAssertion->setPerson($NewXGPerson);
+				$XGAssertion->addType($factrec, $person_class, $xmltype);
+				$XGAssertion->addDate($factrec, $person_class);
+				$XGAssertion->addPlace($factrec, $person_class);
+				$XGAssertion->addSpouse($factrec, $person_class);
+				$XGAssertion->addScope($factrec, $person_class);
+				$temple = get_gedcom_value("TEMP", 2, $factrec, '', false);
+				$XGAssertion->setTemple($temple);
+				$XGAssertion->addRecordInfo($factrec, $person_class);
+			}
+
+			/* XG_Fact */
+			$xmltype = array_search($fact, $factHandler);
+			if ($xmltype!==false) {
+				$XGAssertion = new XG_Characteristic();
+				if ($NewXGPerson) $XGAssertion->setPerson($NewXGPerson);
+				$XGAssertion->addType($factrec, $person_class, $xmltype);
+				$XGAssertion->addDate($factrec, $person_class);
+				$XGAssertion->addPlace($factrec, $person_class);
+				$XGAssertion->addTitle($factrec, $person_class);
+				$XGAssertion->addRecordInfo($factrec, $person_class);
+				$XGAssertion->setDetail($factObj->getDetail());
+			}
+		return $XGAssertion;
+	}
+
+	/**
 	 * Convert person_class to XG_Person
 	 * Add new XG_Person to Persons
 	 * @param Person	The PGV person to convert
@@ -296,69 +424,31 @@ class XmlGedcom {
 
 		$NewXGPerson = new XG_Person();
 		$NewXGPerson->setTempId($person_class->getXref());
-		
+
 		if (empty($username)) {
 			$username = '';
 			if (!empty($this->proxy)) $username = $this->proxy->getUserName();
 		}
-		
+
 		if (!empty($username)) $NewXGPerson->addAlternateId(array('id'=>$person_class->xref, 'type'=>$username.':GEDCOM:'.$GEDCOM));
 
 		/* @var $person_class Person */
-		/* @var $family Family*/
-		/* @var $child Person*/
-		
+
 		if ($person_class->isDead()) $NewXGPerson->setLiving("false");
 		else $NewXGPerson->setLiving("true");
-		
+
 		$person_class->add_family_facts(false);
-		
+
 		$globalfacts = $person_class->getGlobalFacts();
 		foreach($globalfacts as $g=>$factObj) {
-			/* XG_Name */
-			/* @var $factObj Event */
-			if ($factObj->getTag()=='NAME') {
-				$XGAssertion = new XG_Name();
-				$namerec = $factObj->getGedComRecord();
-				$XGAssertion->setPerson($NewXGPerson);
-				$XGAssertion->addRecordInfo($namerec, $person_class);
-				$XGForm = new XG_Form();
-				$XGNamePiece = new XG_NamePieces();
-				$XGNamePiece->addFamily(get_gedcom_value("SURN",2,$namerec,'',false));
-				$XGNamePiece->AddGiven(get_gedcom_value("GIVN",2,$namerec,'',false));
-				$XGNamePiece->AddPrefix(get_gedcom_value("PREN",2,$namerec,'',false));
-				$XGNamePiece->AddSuffix(get_gedcom_value("SUFN",2,$namerec,'',false));
-				$XGForm->setFullText(get_gedcom_value("NAME",1,$namerec,'',false));
-				$XGForm->setPieces($XGNamePiece);
-				$XGAssertion->addForm($XGForm);
-				$NewXGPerson->addAssertion($XGAssertion);
-				/* /XG_Name */
-			}
-			if ($factObj->getTag()=='SEX') {
-				/* XG_Gender */
-				$XGAssertion = new XG_Gender();
-				$genderec = $factObj->getGedComRecord();
-				if ($person_class->getSex()=="M") $XGAssertion->setGender("Male");
-				else if ($person_class->getSex()=="F") $XGAssertion->setGender("Female");
-				else $XGAssertion->setGender("Unknown");
-				$XGAssertion->setPerson($NewXGPerson);
-				$XGAssertion->addRecordInfo($genderec, $person_class);
-				$NewXGPerson->addAssertion($XGAssertion);
-			/* /XG_Gender */
-			}
+			$XGAssertion = $this->convertGedcomEvent($factObj, $NewXGPerson);
+			if ($XGAssertion) $NewXGPerson->addAssertion($XGAssertion);
 		}
 
 		$indifacts = $person_class->getIndiFacts();
 		foreach($indifacts as $i=>$factObj) {
-
-			/* @var $factObj Event */
-			if (is_object($factObj)) $factrec = $factObj->getGedcomRecord();
-			else $factrec = $fact[1];
-
 			$fact = $factObj->getTag();
-			if ($fact=='SSN') continue;
-			
-			/* Alternate Ids */
+		/* Alternate Ids */
 			if ($fact=="REFN") {
 				$type = $factObj->getType();
 				//-- only include REFNs with types
@@ -370,119 +460,63 @@ class XmlGedcom {
 					$NewXGPerson->setID($factObj->getDetail());
 				}
 			}
-			
+				
 			/* GEDCOM GUID */
-			if ($fact=="_UID") {
+			else if ($fact=="_UID") {
 				$id = array('type'=>'GUID', 'id'=>$factObj->getDetail());
 				$NewXGPerson->addAlternateId($id);
 			}
-			
-			/* XG_Event*/
-			$xmltype = array_search($fact, $eventHandler);
-			if ($xmltype!==false) {
-				$XGAssertion = new XG_Event();
-				$XGAssertion->setPerson($NewXGPerson);
-				$XGAssertion->addType($factrec, $person_class, $xmltype);
-				$XGAssertion->addDate($factrec, $person_class);
-				$XGAssertion->addPlace($factrec, $person_class);
-				$XGAssertion->addSpouse($factrec, $person_class);
-				$XGAssertion->addScope($factrec, $person_class);
-				$XGAssertion->addTitle($factrec, $person_class);
-				$XGAssertion->addRecordInfo($factrec, $person_class);
-				$NewXGPerson->addAssertion($XGAssertion);
+			else {
+				$XGAssertion = $this->convertGedcomEvent($factObj, $NewXGPerson);
+				if ($XGAssertion) $NewXGPerson->addAssertion($XGAssertion);
 			}
-			/* /XG_Event */
-
-			/* XG_Ordinance */
-			$xmltype = array_search($fact, $ordinanceHandler);
-			if($xmltype!==false) {
-				$XGAssertion = new XG_Ordinance();
-				$XGAssertion->setPerson($NewXGPerson);
-				$XGAssertion->addType($factrec, $person_class, $xmltype);
-				$XGAssertion->addDate($factrec, $person_class);
-				$XGAssertion->addPlace($factrec, $person_class);
-				$XGAssertion->addSpouse($factrec, $person_class);
-				$XGAssertion->addScope($factrec, $person_class);
-				$temple = get_gedcom_value("TEMP", 2, $factrec, '', false);
-				$XGAssertion->setTemple($temple);
-				$XGAssertion->addRecordInfo($factrec, $person_class);
-				$NewXGPerson->addAssertion($XGAssertion);
-			}
-			/* /XG_Ordinance */
-
-			/* XG_Fact */
-			$xmltype = array_search($fact, $factHandler);
-			if ($xmltype!==false) {
-				$XGAssertion = new XG_Fact();
-				$XGAssertion->setPerson($NewXGPerson);
-				$XGAssertion->addType($factrec, $person_class, $xmltype);
-				$XGAssertion->addDate($factrec, $person_class);
-				$XGAssertion->addPlace($factrec, $person_class);
-				$XGAssertion->addSpouse($factrec, $person_class);
-				$XGAssertion->addScope($factrec, $person_class);
-				$XGAssertion->addTitle($factrec, $person_class);
-				$XGAssertion->addRecordInfo($factrec, $person_class);
-				$XGAssertion->setDetail($factObj->getDetail());
-				$NewXGPerson->addAssertion($XGAssertion);
-			}
-			/* /XG_Fact */
 		}
 
 		/* XG_Note */
 		$notes = $person_class->getOtherFacts();
 		/* @var $note XG_Note
-		foreach($notes as $n=>$factObj)
-		{
+		 foreach($notes as $n=>$factObj)
+		 {
 			if (is_object($factObj)) $noterec = $factObj->getGedcomRecord();
 			else $noterec = $fact[1];
 			$note = get_gedcom_value("NOTE", 1, $noterec, '', false);
 			if (!empty($note)) {
-				$XGAssertion = new XG_Fact();
-				$XGNote = new XG_Note();
-				$XGNote->setNote($note);
-				$XGAssertion->addNote($XGNote);
-				$XGAssertion->setPerson($NewXGPerson);
-				$XGAssertion->setType("Notes");
-				$XGAssertion->addDate($noterec, $person_class);
-				$XGAssertion->addPlace($noterec, $person_class);
-				$XGAssertion->addSpouse($noterec, $person_class);
-				$XGAssertion->addScope($noterec, $person_class);
-				$XGAssertion->addTitle($noterec, $person_class);
-				$XGAssertion->addRecordInfo($noterec, $person_class);
-				$NewXGPerson->addAssertion($XGAssertion);
+			$XGAssertion = new XG_Fact();
+			$XGNote = new XG_Note();
+			$XGNote->setNote($note);
+			$XGAssertion->addNote($XGNote);
+			$XGAssertion->setPerson($NewXGPerson);
+			$XGAssertion->setType("Notes");
+			$XGAssertion->addDate($noterec, $person_class);
+			$XGAssertion->addPlace($noterec, $person_class);
+			$XGAssertion->addSpouse($noterec, $person_class);
+			$XGAssertion->addScope($noterec, $person_class);
+			$XGAssertion->addTitle($noterec, $person_class);
+			$XGAssertion->addRecordInfo($noterec, $person_class);
+			$NewXGPerson->addAssertion($XGAssertion);
 			}
-		}
-		/* /XG_Note */
-		
+			}
+			/* /XG_Note */
+
 		/* Lineage information*/
 		$families = $person_class->getChildFamilies();
 		foreach($families as $f=>$family){
 			$father = $family->getHusband();
 			$mother = $family->getWife();
 			if(!empty($father)){
-				$XGAssertion = new XG_Fact();
-				$XGAssertion->setPerson($NewXGPerson);
 				$parentRefF = new XG_PersonRef();
 				$parentRefF->setRef($father->xref);
 				$parentRefF->setRole("father");
-				$XGAssertion->setParent($parentRefF);
-				$XGAssertion->setScope("parent-child");
-				$XGAssertion->setType("Lineage");
-				$XGAssertion->addRecordInfo('', $family);						
-				$NewXGPerson->addAssertion($XGAssertion);
+				if ($father->getSex()=="M") $parentRefF->setGender("Male");
+				if ($father->getSex()=="F") $parentRefF->setGender("Female");
 				$NewXGPerson->addParent($parentRefF);
 			}
 			if(!empty($mother)){
-				$XGAssertion = new XG_Fact();
-				$XGAssertion->setPerson($NewXGPerson);
 				$parentRefM = new XG_PersonRef();
 				$parentRefM->setRef($mother->xref);
 				$parentRefM->setRole("mother");
-				$XGAssertion->setParent($parentRefM);
-				$XGAssertion->setScope("parent-child");
-				$XGAssertion->setType("Lineage");
-				$XGAssertion->addRecordInfo('', $family);				
-				$NewXGPerson->addAssertion($XGAssertion);
+				if ($mother->getSex()=="M") $parentRefM->setGender("Male");
+				if ($mother->getSex()=="F") $parentRefM->setGender("Female");
 				$NewXGPerson->addParent($parentRefM);
 			}
 		}
@@ -524,6 +558,31 @@ class XmlGedcom {
 		$this->persons[$NewXGPerson->getTempId()] = $NewXGPerson;
 		return $NewXGPerson;
 	}
+	
+	/**
+	 * Get XML to build a relationship between 2 people
+	 * @param string $fsid
+	 * @param string $type
+	 * @return string
+	 */
+	function getRelationshipXml($fsid, $type) {
+		$xml ='';
+		if (!empty($fsid)) {
+			$xml .= '<'.$type.' id="'.$fsid.'">
+	          <assertions>
+	            <characteristics>
+	              <characteristic>
+	                <value type="Other">
+	                  <title>'.$type.'</title>
+	                  <lineage>Biological</lineage>
+	                </value>
+	              </characteristic>
+	            </characteristics>
+	          </assertions>
+	        </'.$type.'>';
+		}
+		return $xml;
+	}
 
 	/**
 	 *  gets the GEDCOM for the fam record where person is a child as one solid string with linebreaks
@@ -561,18 +620,79 @@ class XmlGedcom {
 		}
 		return $gedcom;
 	}
+	
+	/**
+	 * Convert an array of assertions to XML for inclusion in a person update
+	 * @param $assertions
+	 * @param $forAdd
+	 * @return string
+	 */
+	static function assertionsToXml($assertions, $forAdd=false) {
+		$xml = "";
+		$xml.="<assertions>\n";
+		//-- names
+		$xml .= "<names>";
+		if(!empty($assertions)){
+			foreach($assertions as $assertion){
+				if ($assertion instanceof XG_Name) $xml.=$assertion->toXml($forAdd);
+			}
+		}
+		$xml .= "</names>";
+		$xml .= "<genders>";
+		if(!empty($assertions)){
+			foreach($assertions as $assertion){
+				if ($assertion instanceof XG_Gender) $xml.=$assertion->toXml($forAdd);
+			}
+		}
+		$xml .= "</genders>";
+		$xml .= "<events>";
+		if(!empty($assertions)){
+			foreach($assertions as $assertion){
+				if ($assertion instanceof XG_Event) $xml.=$assertion->toXml($forAdd);
+			}
+		}
+		$xml .= "</events>";
+		$xml .= "<characteristics>";
+		if(!empty($assertions)){
+			foreach($assertions as $assertion){
+				if ($assertion instanceof XG_Characteristic) $xml.=$assertion->toXml($forAdd);
+			}
+		}
+		$xml .= "</characteristics>";
+		$xml .= "<ordinances>";
+		if(!empty($assertions)){
+			foreach($assertions as $assertion){
+				if ($assertion instanceof XG_Ordinance) {
+					//-- only ordinances with places can be added
+					if (!$forAdd || ($assertion->getPlace()!=null && $assertion->getPlace()->getOriginal()!="")) $xml.=$assertion->toXml($forAdd);
+				}
+			}
+		}
+		$xml .= "</ordinances>";
+		$xml.="</assertions>\n";
+		return $xml;
+	}
 
 	//main parser methods
 
 	//Tag opened function
 	function startElement($parser, $name, $attrs) {
 		$this-> lastTagName = $name;
-		
+
 		if (isset($attrs["TYPE"])){
 			$this->lastType = $attrs["TYPE"];
 		}
 		if (isset($this->handler[$name]["tag"])){
 			call_user_func(array(&$this,$this->handler[$name]["tag"]), $attrs);
+		}
+		else {
+			$event = end($this->tagStack);
+			if ($event) {
+				$last = strtoupper(get_class($event));
+				if (isset($this->handler[$last.":".$name]["tag"])){
+					call_user_func(array(&$this,$this->handler[$last.":".$name]["tag"]), $attrs);
+				}
+			}
 		}
 	}
 
@@ -582,6 +702,13 @@ class XmlGedcom {
 		if ($name == "PERSON"){
 			$person = end($this->tagStack);
 			$this->persons[$person->getID()] = $person;
+			$this->persons[$person->getRequestedId()] = $person;
+			$this->persons[$person->getTempId()] = $person;
+		}
+
+		if ($name == "MATCH" || $name == "SEARCH") {
+			$person = end($this->tagStack);
+			$this->matches[$person->getId()] = $person;
 		}
 
 		if ($name!="ID" && isset($this->handler[$name]["tag"])) {
@@ -640,6 +767,21 @@ class XmlGedcom {
 		$person->setModified($attrs["MODIFIED"]);
 		if (!empty($attrs["TEMPID"]))
 		$person->setTempId($attrs["TEMPID"]);
+		$last = end($this->tagStack);
+		if (method_exists($last, "setPerson")) $last->setPerson($person);
+		$this->tagStack[] = $person;
+	}
+	function openFamily($attrs) {
+		$family = new XG_Family();
+		$last = end($this->tagStack);
+		$last->addFamily($family);
+		$this->tagStack[] = $family;
+	}
+	function openMatch($attrs){
+		$person = new XG_Match();
+		$person->setXmlGed($this);
+		if (!empty($attrs["ID"]))
+		$person->setID($attrs["ID"]);
 		$this->tagStack[] = $person;
 	}
 	function openId($attrs) {
@@ -652,15 +794,19 @@ class XmlGedcom {
 		$personRef = new XG_PersonRef();
 		if (!empty($attrs["REF"]))
 		$personRef->setRef($attrs["REF"]);
+		if (!empty($attrs["ID"]))
+		$personRef->setRef($attrs["ID"]);
 		if (!empty($attrs["ROLE"]))
 		$personRef->setRole($attrs["ROLE"]);
-		if (get_class($ordFactRel)=="XG_Person") {
+		if (!empty($attrs["GENDER"]))
+		$personRef->setGender($attrs["GENDER"]);
+		if ($ordFactRel instanceof XG_HasAssertions) {
 			$ordFactRel->addChild($personRef);
 		}
 		else {
 			$ordFactRel->setChild($personRef);
 		}
-		
+
 		array_pop($this->tagStack);
 		$this->tagStack[] = $ordFactRel;
 		$this->tagStack[] = $personRef;
@@ -670,10 +816,14 @@ class XmlGedcom {
 		$personRef = new XG_PersonRef();
 		if (!empty($attrs["REF"]))
 		$personRef->setRef($attrs["REF"]);
+		if (!empty($attrs["ID"]))
+		$personRef->setRef($attrs["ID"]);
 		if (!empty($attrs["ROLE"]))
 		$personRef->setRole($attrs["ROLE"]);
+		if (!empty($attrs["GENDER"]))
+		$personRef->setGender($attrs["GENDER"]);
 		$type = strtolower(get_class($ordFactRel));
-		if ($type == "xg_ordinance" || $type=="xg_person"){
+		if ($type == "xg_ordinance" || $ordFactRel instanceof XG_HasAssertions){
 			$ordFactRel->addParent($personRef);
 		}else {
 			$ordFactRel->setParent($personRef);
@@ -687,10 +837,14 @@ class XmlGedcom {
 		$personRef = new XG_PersonRef();
 		if (!empty($attrs["REF"]))
 		$personRef->setRef($attrs["REF"]);
+		if (!empty($attrs["ID"]))
+		$personRef->setRef($attrs["ID"]);
 		if (!empty($attrs["ROLE"]))
 		$personRef->setRole($attrs["ROLE"]);
+		if (!empty($attrs["GENDER"]))
+		$personRef->setGender($attrs["GENDER"]);
 		//-- handle summary view
-		if (get_class($ordFactRel)=="XG_Person") {
+		if ($ordFactRel instanceof XG_HasAssertions) {
 			$ordFactRel->addSpouse($personRef);
 		}
 		else {
@@ -762,21 +916,21 @@ class XmlGedcom {
 		$person = end($this->tagStack);
 		$event = new XG_Event();
 		if (!empty($attrs["ID"]))
-			$event->setId($attrs["ID"]);
+		$event->setId($attrs["ID"]);
 		if (!empty($attrs["MODIFIED"]))
-			$event->setModified($attrs["MODIFIED"]);
+		$event->setModified($attrs["MODIFIED"]);
 		if (!empty($attrs["DISPUTING"]))
-			$event->setDisputing($attrs["DISPUTING"]);
+		$event->setDisputing($attrs["DISPUTING"]);
 		if (!empty($attrs["TEMPID"]))
-			$event->setTempId($attrs["TEMPID"]);
+		$event->setTempId($attrs["TEMPID"]);
 		if (!empty($attrs["VERSION"]))
-			$event->setVersion($attrs["VERSION"]);
+		$event->setVersion($attrs["VERSION"]);
 		if (!empty($attrs["SCOPE"]))
-			$event->setScope($attrs["SCOPE"]);
+		$event->setScope($attrs["SCOPE"]);
 		if (!empty($attrs["TYPE"]))
-			$event->setType($attrs["TYPE"]);
+		$event->setType($attrs["TYPE"]);
 		if (!empty($attrs["TITLE"]))
-			$event->setTitle($attrs["TITLE"]);
+		$event->setTitle($attrs["TITLE"]);
 		if (!empty($attrs["CONTRIBUTOR"])) {
 			$cont = new XG_Contributor();
 			$cont->setRef($attrs["CONTRIBUTOR"]);
@@ -787,6 +941,70 @@ class XmlGedcom {
 		$this->tagStack[] = $person;
 		$this->tagStack[] = $event;
 	}
+
+	function openEventValue($attrs){
+		$event = end($this->tagStack);
+		if (!empty($attrs["ID"]))
+		$event->setId($attrs["ID"]);
+		if (!empty($attrs["MODIFIED"]))
+		$event->setModified($attrs["MODIFIED"]);
+		if (!empty($attrs["DISPUTING"]))
+		$event->setDisputing($attrs["DISPUTING"]);
+		if (!empty($attrs["TEMPID"]))
+		$event->setTempId($attrs["TEMPID"]);
+		if (!empty($attrs["VERSION"]))
+		$event->setVersion($attrs["VERSION"]);
+		if (!empty($attrs["SCOPE"]))
+		$event->setScope($attrs["SCOPE"]);
+		if (!empty($attrs["TYPE"]))
+		$event->setType($attrs["TYPE"]);
+		if (!empty($attrs["TITLE"]))
+		$event->setTitle($attrs["TITLE"]);
+		if (!empty($attrs["CONTRIBUTOR"])) {
+			$cont = new XG_Contributor();
+			$cont->setRef($attrs["CONTRIBUTOR"]);
+			$event->setContributor($cont);
+		}
+		if ($event->getPerson()) {
+			$person = $event->getPerson();
+			if (!empty($event->type)) {
+				if ($event->type=='Birth') $person->setBirthAssertion($event);
+				if ($event->type=='Death') $person->setDeathAssertion($event);
+				if ($event->type=='Marriage') $person->setMarriageAssertion($event);
+			}
+		}
+	}
+
+	function openCharacteristic($attrs){
+		$person = end($this->tagStack);
+		$event = new XG_Characteristic();
+		if (!empty($attrs["ID"]))
+		$event->setId($attrs["ID"]);
+		if (!empty($attrs["MODIFIED"]))
+		$event->setModified($attrs["MODIFIED"]);
+		if (!empty($attrs["DISPUTING"]))
+		$event->setDisputing($attrs["DISPUTING"]);
+		if (!empty($attrs["TEMPID"]))
+		$event->setTempId($attrs["TEMPID"]);
+		if (!empty($attrs["VERSION"]))
+		$event->setVersion($attrs["VERSION"]);
+		if (!empty($attrs["SCOPE"]))
+		$event->setScope($attrs["SCOPE"]);
+		if (!empty($attrs["TYPE"]))
+		$event->setType($attrs["TYPE"]);
+		if (!empty($attrs["TITLE"]))
+		$event->setTitle($attrs["TITLE"]);
+		if (!empty($attrs["CONTRIBUTOR"])) {
+			$cont = new XG_Contributor();
+			$cont->setRef($attrs["CONTRIBUTOR"]);
+			$event->setContributor($cont);
+		}
+		$person->addAssertion($event);
+		array_pop($this->tagStack);
+		$this->tagStack[] = $person;
+		$this->tagStack[] = $event;
+	}
+
 	function openRelationship($attrs){
 
 		$person = end($this->tagStack);
@@ -876,6 +1094,12 @@ class XmlGedcom {
 		$this->tagStack[] = $ordFacEve;
 		$this->tagStack[] = $date;
 	}
+	function openSelected($attrs) {
+		$last = end($this->tagStack);
+		$sel = new XG_Selected();
+		$last->setSelected($sel);
+		$this->tagStack[] = $sel;
+	}
 	function openForm($attrs){
 		$name = end($this->tagStack);
 		$form = new XG_Form();
@@ -907,22 +1131,44 @@ class XmlGedcom {
 
 	//function for each element that contains data
 	function dataError($data) {
+		if (empty($this->error)) $this->error = new XG_Error();
 		$this->error->setMessage($this->error->getMessage().trim($data));
 	}
 	function dataCode($data) {
-		if (!empty($this->error)) $this->error->setCode(trim($data));
+		if (empty($this->error)) $this->error = new XG_Error();
+		$this->error->setCode(trim($data));
 	}
 	function dataId($data) {
 		if (!is_null($this->tempId)) $this->tempId['id'] = trim($data);
 		$person = end($this->tagStack);
 		if (get_class($person)=="XG_Person") $person->addAlternateId($this->tempId);
 	}
-	
+
 	function dataLiving($data) {
 		$person = end($this->tagStack);
 		if (get_class($person)=="XG_Person") $person->setLiving($data);
 	}
-	
+
+	function dataModified($data) {
+		$person = end($this->tagStack);
+		if (get_class($person)=="XG_Person") $person->setModified($data);
+	}
+
+	function dataModifiable($data) {
+		$person = end($this->tagStack);
+		if (get_class($person)=="XG_Person") $person->setModifiable($data);
+	}
+
+	function dataScore($data) {
+		$person = end($this->tagStack);
+		$person->setScore($data);
+	}
+
+	function dataConfidence($data) {
+		$person = end($this->tagStack);
+		$person->setConfidence($data);
+	}
+
 	function dataNote($data){
 		$note = end($this->tagStack); // object on top of stack represents the last tag opened
 		$note->setNote($note->getNote().trim($data)); // set the data
@@ -940,6 +1186,10 @@ class XmlGedcom {
 		$class->setOriginal($class->getOriginal().trim($data));
 		array_pop($this->tagStack);
 		$this->tagStack[] = $class;
+	}
+	function dataSelected($data) {
+		$class = end($this->tagStack);
+		$class->setValue(trim($data));
 	}
 	function dataFullText($data){
 		$class = end($this->tagStack);
@@ -977,12 +1227,38 @@ class XmlGedcom {
 		array_pop($this->tagStack);
 		$this->tagStack[] = $event;
 	}
+
+	function dataDisposition($data) {
+		$event = end($this->tagStack);
+		$event->setDisposition(trim($data));
+	}
+
+	function dataTemple($data) {
+		$ord = end($this->tagStack);
+		$ord->setTemple(trim($data));
+	}
+
+	function dataMinYear($data) {
+		$person = end($this->tagStack);
+		$person->setMinBirthYear($data);
+	}
+
+	function dataMaxYear($data) {
+		$person = end($this->tagStack);
+		$person->setMaxDeathYear($data);
+	}
+
 	function dataValue($data){
 		$lastClass = end($this->tagStack);
 		$class = strtolower(get_class($lastClass));
 		if (!empty($this->handler[$class])){
 			call_user_func(array(&$this, $this->handler[$class]), $data);
 		}
+	}
+
+	function dataType($data) {
+		$last = end($this->tagStack);
+		if (get_class($last)=="XG_Gender") $last->setGender(trim($data));
 	}
 
 	//some tags data is inside of <value> tags, so these tags are split farther
@@ -1002,7 +1278,7 @@ class XmlGedcom {
 
 		$type = strtolower($this->lastType);
 		$namePiece = end($this->tagStack);
-		call_user_func(array($this, $this->handler[strtolower($type)]), $data, $namePiece);
+		call_user_func(array($this, $this->namehandler[strtolower($type)]), $data, $namePiece);
 		array_pop($this->tagStack);
 		$this->tagStack[] = $namePiece;
 	}
@@ -1026,6 +1302,33 @@ class XmlGedcom {
 	}
 }
 
+class XG_Match extends XG_HasAssertions{
+	var $score = 0;
+	var $id = "";
+	var $confidence = "";
+	var $person = null;
+	var $xmlGed = null;
+
+	function getScore() { return $this->score; }
+	function setScore($s) { $this->score = $s; }
+
+	function getId() { return $this->id; }
+	function setId($id) { $this->id = $id; }
+
+	function getConfidence() { return $this->confidence; }
+	function setConfidence($c) { $this->confidence = $c; }
+
+	function getPerson() { return $this->person; }
+	function setPerson($p) { $this->person = $p; }
+
+	function getXmlGed() {
+		return $this->xmlGed;
+	}
+	function setXmlGed(&$xmlGed) {
+		$this->xmlGed = $xmlGed;
+	}
+}
+
 /**
  * returns the GEDCOM snippet for a place.
  * normalized place is ignored
@@ -1035,6 +1338,7 @@ class XG_Place{
 	var $original="";
 	var $normalized="";
 	var $normalizedId;
+	var $selected;
 
 	function toXml(){
 		$xml='';
@@ -1045,7 +1349,7 @@ class XG_Place{
 		$xml.="\t</place>\n";
 		return $xml;
 	}
-	
+
 	//getters
 	function getOriginal(){return $this->original;}
 
@@ -1066,6 +1370,14 @@ class XG_Place{
 
 	function setNormalizedId($normalziedId){
 		$this->normalizedId = $normalziedId;
+	}
+
+	function getSelected() {
+		return $this->selected;
+	}
+
+	function setSelected($s) {
+		$this->selected = $s;
 	}
 
 
@@ -1093,10 +1405,11 @@ class XG_Gender extends XG_Assertion{
 	function toXml($forAdd=false){
 		$xml='';
 		$xml.="<gender";
-		if (!$forAdd) {
+		if (!$forAdd || $this->isMarkedForDelete()) {
 			$xml.=" version=\"".$this->version."\" modified=\"".$this->modified."\" ";
 			$xml.="disputing=\"".($this->disputing==false?"false":"true")."\" contributor=\"".$this->contributor."\"";
 		}
+		if ($this->isMarkedForDelete()) $xml.=' action="Delete"';
 		$xml.=">\n";
 		if(!empty($this->citations)){
 			$xml.="<citations>\n";
@@ -1112,7 +1425,7 @@ class XG_Gender extends XG_Assertion{
 			}
 			$xml.="</notes>\n";
 		}
-		$xml.="<value>".$this->gender."</value>\n";
+		$xml.="<value><type>".$this->gender."</type></value>\n";
 		$xml.="</gender>\n";
 		return $xml;
 	}
@@ -1179,11 +1492,12 @@ class XG_Name extends XG_Assertion {
 	}
 
 	function toXml($forAdd=false){
-		$xml = "<name type=\"Name\" ";
-		if (!$forAdd) {
-			$xml.="version=\"".$this->version."\" modified=\"".$this->modified."\" ";
+		$xml = "<name";
+		if (!$forAdd || $this->isMarkedForDelete()) {
+			$xml.=" version=\"".$this->version."\" modified=\"".$this->modified."\" ";
 			$xml.="id=\"".$this->id."\" disputing=\"".($this->disputing==false?"false":"true")."\" contributor=\"".$this->contributor."\"";
 		}
+		if ($this->isMarkedForDelete()) $xml.=' action="Delete"';
 		$xml.=">\n";
 		if(!empty($this->citations)){
 			$xml.="<citations>\n";
@@ -1199,6 +1513,7 @@ class XG_Name extends XG_Assertion {
 			}
 			$xml.="</notes>\n";
 		}
+		$xml .= "<value type=\"Name\">";
 		if(!empty($this->forms)){
 			$xml.="<forms>\n";
 			foreach($this->forms as $form){
@@ -1206,6 +1521,7 @@ class XG_Name extends XG_Assertion {
 			}
 			$xml.="</forms>\n";
 		}
+		$xml .= "</value>\n";
 		$xml.="</name>\n";
 		return $xml;
 	}
@@ -1259,89 +1575,36 @@ class XG_Name extends XG_Assertion {
 	}
 }
 
-/**
- * a person is made up of assertions (name, gender, events, facts, relationships, and ordinances).
- */
-class XG_Person{
-	//private fields
+class XG_HasAssertions {
 	var $assertions = array();
-	var $notes = array();
-	var $citations = array();
-	var $id;
-	var $tempId;
-	var $version;
-	var $modified;
 	var $parents = array();
 	var $children = array();
 	var $spouses = array();
+	var $families = array();
 	var $name = null;
 	var $birthAssertion = null;
 	var $deathAssertion = null;
 	var $marriageAssertion = null;
 	var $gender = null;
-	var $famcged = "";
-	var $famsged = "";
-	var $indiged = "";
-	var $xmlGed = null;
-	var $living = "false";
-	var $altIds = array();
+	var $minBirthYear;
+	var $maxDeathYear;
 
-	function setXmlGed(&$xmlGed) {
-		$this->xmlGed = $xmlGed;
-	}
+	function getMinBirthYear() { return $this->minBirthYear; }
+	function getMaxDeathYear() { return $this->maxDeathYear; }
+	function setMinBirthYear($y) { $this->minBirthYear = $y; }
+	function setMaxDeathYear($y) { $this->maxDeathYear = $y; }
 
-	function toXml($forAdd=false){
-		$xml = "<person ";
-		if (!$forAdd) {
-			$xml .="version=\"".$this->version."\" ";
-			$xml .= "modified=\"".$this->modified."\" id=\"".$this->id."\"";
-		}
-		else {
-			$xml .= "tempId=\"".$this->tempId."\"";
-		}
-		$xml .=">\n";
-		$xml.="<information>\n";
-		if (count($this->altIds)>0) {
-			$xml.="\t<alternateIds>\n";
-			foreach($this->altIds as $id) {
-				if (!empty($id)) $xml.="\t\t<id type=\"".$id['type']."\">".$id['id']."</id>\n";
-			}
-			$xml.="\t</alternateIds>\n";
-		}
-		if(!empty($this->gender)) $xml.="\t<gender>".$this->gender->getGender()."</gender>\n";
-		if(is_string($this->living)) $living = $this->living;
-		else {
-			$living = "true";
-			if (!$this->living) $living = "false";
-		}
-		$xml.="\t<living>".$living."</living>\n";
-		$xml.="</information>\n";
-		$xml.="<assertions>\n";
-
-		if(!empty($this->assertions)){
-			foreach($this->assertions as $assertion){
-				//$xml.="[".get_class($assertion)."] ";
-				$xml.=$assertion->toXml($forAdd);
-				//$xml.="\n";
-			}
-		}
-		$xml.="</assertions>\n";
-		$xml.="</person>\n";
-		return $xml;
-	}
-
-	function getXmlGed() {
-		return $this->xmlGed;
-	}
-
-	//add functions for arrays
 	function addAssertion(&$assertion){
 		$assertion->setPerson($this);
 		$this->assertions[] = $assertion;
 	}
 
-	function addNote(&$note){
-		$this->notes[] = $note;
+	function getFamilies() {
+		return $this->families;
+	}
+
+	function addFamily(&$f) {
+		$this->families[] = $f;
 	}
 
 	function addParent(&$parent) {
@@ -1412,7 +1675,7 @@ class XG_Person{
 	function getDeathAssertion() {
 		return $this->deathAssertion;
 	}
-	
+
 	function setMarriageAssertion(&$marriage) {
 		$this->marriageAssertion=$marriage;
 	}
@@ -1439,12 +1702,77 @@ class XG_Person{
 		if (empty($this->gender) || is_null($this->gender->getGender())) $this->gender = $gender;
 	}
 
+	/**
+	 * Return an array of all of this person's assertions
+	 *
+	 * @return Array
+	 */
+	function getAssertions(){
+		return $this->assertions;
+	}
+}
+
+/**
+ * a person is made up of assertions (name, gender, events, facts, relationships, and ordinances).
+ */
+class XG_Person extends XG_HasAssertions {
+	//private fields
+	var $notes = array();
+	var $citations = array();
+	var $id;
+	var $requestedId = "";
+	var $tempId;
+	var $version;
+	var $modified;
+	var $famcged = "";
+	var $famsged = "";
+	var $indiged = "";
+	var $xmlGed = null;
+	var $living = "false";
+	var $modifiable = "false";
+	var $altIds = array();
+
+	function setXmlGed(&$xmlGed) {
+		$this->xmlGed = $xmlGed;
+	}
+
+	function toXml($forAdd=false){
+		$xml = "<person ";
+		if (!$forAdd) {
+			$xml .="version=\"".$this->version."\" ";
+			$xml .= "modified=\"".$this->modified."\" id=\"".$this->id."\"";
+		}
+		else {
+			$xml .= "tempId=\"".$this->tempId."\"";
+		}
+		$xml .=">\n";
+		$xml .= XmlGedcom::assertionsToXml($this->assertions, $forAdd);
+		$xml.="</person>\n";
+		return $xml;
+	}
+
+	function getXmlGed() {
+		return $this->xmlGed;
+	}
+
+	function addNote(&$note){
+		$this->notes[] = $note;
+	}
+
 	function getLiving(){
 		return $this->living;
 	}
 
 	function setLiving($living){
 		if ($this->living==null) $this->living = $living;
+	}
+
+	function getModifiable(){
+		return $this->modifyable;
+	}
+
+	function setModifiable($m){
+		if ($this->modifiable==null) $this->modifiable = $m;
 	}
 
 	function getTempId(){
@@ -1459,15 +1787,6 @@ class XG_Person{
 		$this->citations[] = $citation;
 	}
 
-	/**
-	 * Return an array of all of this person's assertions
-	 *
-	 * @return Array
-	 */
-	function getAssertions(){
-		return $this->assertions;
-	}
-
 	function getNotes(){
 		return $this->notes;
 	}
@@ -1479,11 +1798,15 @@ class XG_Person{
 	function getID(){
 		return $this->id;
 	}
-	
+
+	function getRequestedId(){
+		return $this->requestedId;
+	}
+
 	function getAlternateIds() {
 		return $this->altIds;
 	}
-	
+
 	function addAlternateId($id) {
 		$this->altIds[] = $id;
 	}
@@ -1500,6 +1823,8 @@ class XG_Person{
 	function setID($newID){
 		$this->id = $newID;
 	}
+
+	function setRequestedId($i) { $this->requestedId = $i; }
 
 	function setVersion($newVersion){
 		$this->version = $newVersion;
@@ -1525,19 +1850,18 @@ class XG_Person{
 		foreach($this->assertions as $assertion){
 			$famc = $assertion->getFamCGedcom();
 			$fams = $assertion->getFamSGedcom();
-			//$gedcom .= "\r\n[".get_class($assertion)."]\r\n"; //TODO take out when finished
 
 			if (!$assertion->getDisputing() && empty($famc) && empty($fams)){
 				$gedcom .= $assertion->getIndiGedcom();
 			}
 		}
-		
+
 		// add any alternate ids
 		foreach($this->altIds as $a=>$id) {
 			$gedcom .= "1 REFN ".$id['id']."\r\n";
 			$gedcom .= "2 TYPE ".$id['type']."\r\n";
 		}
-		
+
 		//add on the GEDCOM for each note and source for
 		//each citation and the last date changed for each modified
 		foreach($this->notes as $note){
@@ -1553,14 +1877,14 @@ class XG_Person{
 		$usedFams = array();
 		foreach($famc as $fct=>$fam){
 			if (!isset($usedFamc[$fam['id']])) {
-				$gedcom .= "1 FAMC @F".$fam['id']."@\r\n";
-				$usedFamc[$fam['id']] = $fam; 
+				$gedcom .= "1 FAMC @".$fam['id']."@\r\n";
+				$usedFamc[$fam['id']] = $fam;
 			}
 		}
 		foreach($fams as $fct=>$fam){
 			if (!isset($usedFams[$fam['id']])) {
-				$gedcom .= "1 FAMS @F".$fam['id']."@\r\n";
-				$usedFams[$fam['id']] = $fam; 
+				$gedcom .= "1 FAMS @".$fam['id']."@\r\n";
+				$usedFams[$fam['id']] = $fam;
 			}
 		}
 		if (!empty($this->modified)){
@@ -1585,78 +1909,91 @@ class XG_Person{
 	 */
 	function getFamCGedcom(){
 		if (!empty($this->famcged)) return $this->famcged;
+
 		$fams = array();
-		//-- first try to get the FAMS GEDCOM from the parents where this person is a child
-		//-- this is to ensure that we always use the same family ids   
-		if (!is_null($this->xmlGed)) {
-			foreach($this->parents as $p=>$parent) {
-				$person = $this->xmlGed->getPerson($parent->getRef());
-				if (!is_null($person)) {
-					$pfams = $person->getFamSGedcom();
-					foreach($pfams as $f=>$pfam) {
-						if (preg_match("/CHIL @I".$this->id."@/", $pfam['gedcom'])>0) {
-							$found = false;
-							foreach($fams as $f=>$fam) {
-								if ($fam['id']==$pfam['id']) {
-									$found = true;
-									break;
-								}
-							}
-							if (!$found) $fams[] = $pfam;
-						}
-					}
-				}
-			}
-		}
-		//-- couldn't get the correct fam gedcom from the parents, so do your best
-		if (count($fams)==0 && count($this->parents)>0) {
-			//get GEDCOM for each assertion
-			foreach($this->assertions as $assertion){
-				if (!$assertion->getDisputing()){
-					//make sure not to add duplicate entries
-					$tempGedcom = $assertion->getFamCGedcom();
-					if (!empty($tempGedcom)) {
-						$husb = "";
-						$wife = "";
-						$ct=preg_match("/HUSB @I(.*)@/", $tempGedcom, $match);
-						if ($ct) $husb = $match[1];
-						$ct=preg_match("/WIFE @I(.*)@/", $tempGedcom, $match);
-						if ($ct) $wife = $match[1];
-
-						$fct = count($fams);
-						$newfam = array();
-						$newfam['gedcom']="1 CHIL @I".$this->id."@\r\n";
-						$newfam['husb'] = false;
-						$newfam['wife'] = false;
-
-						for($f=0; $f<$fct; $f++) {
-							$fam = $fams[$f];
-							if ($fam['husb']===$husb) break;
-							if ($fam['wife']===$wife) break;
-						}
-						if ($f==$fct) $fam = $newfam;
-						if (!empty($husb)) $fam['husb']=$husb;
-						if (!empty($wife)) $fam['wife']=$wife;
-						$fam['gedcom'].= $tempGedcom;
-						$fams[$f] = $fam;
-					}
-				}
-			}
-
-			$fct = count($fams);
-			for($f=0; $f<$fct; $f++) {
-				if (!empty($fams[$f]["husb"])||!empty($fams[$f]["wife"])) {
-					$fams[$f]["gedcom"] = "0 @F".$fams[$f]["husb"].":".$fams[$f]["wife"]."@ FAM\r\n".$fams[$f]["gedcom"];
-					$fams[$f]['id'] = $fams[$f]["husb"].":".$fams[$f]["wife"];
-				}
-				else {
-					$fams[$f]["gedcom"] = "0 @F".$f.$this->id."@ FAM\r\n".$fams[$f]["gedcom"];
-					$fams[$f]['id'] = $f.$this->id;
-				}
+		foreach($this->families as $family) {
+			$gedfam = $family->getFamGedcom();
+			if (preg_match("/HUSB @I".$this->id."@/", $gedfam)==0 && preg_match("/WIFE @I".$this->id."@/", $gedfam)==0) {
+				$ct = preg_match("/0 @(.*)@ FAM/", $gedfam, $match);
+				$famid = $match[1];
+				$fams[] = array('id'=>$famid, 'gedcom'=>$gedfam);
 			}
 		}
 		$this->famcged = $fams;
 		return $fams;
+		/*
+		 //-- first try to get the FAMS GEDCOM from the parents where this person is a child
+		 //-- this is to ensure that we always use the same family ids
+		 if (!is_null($this->xmlGed)) {
+			foreach($this->parents as $p=>$parent) {
+			$person = $this->xmlGed->getPerson($parent->getRef());
+			if (!is_null($person)) {
+			$pfams = $person->getFamSGedcom();
+			foreach($pfams as $f=>$pfam) {
+			if (preg_match("/CHIL @I".$this->id."@/", $pfam['gedcom'])>0) {
+			$found = false;
+			foreach($fams as $f=>$fam) {
+			if ($fam['id']==$pfam['id']) {
+			$found = true;
+			break;
+			}
+			}
+			if (!$found) $fams[] = $pfam;
+			}
+			}
+			}
+			}
+			}
+			//-- couldn't get the correct fam gedcom from the parents, so do your best
+			if (count($fams)==0 && count($this->parents)>0) {
+			//get GEDCOM for each assertion
+			foreach($this->assertions as $assertion){
+			if (!$assertion->getDisputing()){
+			//make sure not to add duplicate entries
+			$tempGedcom = $assertion->getFamCGedcom();
+			if (!empty($tempGedcom)) {
+			$husb = "";
+			$wife = "";
+			$ct=preg_match("/HUSB @I(.*)@/", $tempGedcom, $match);
+			if ($ct) $husb = $match[1];
+			$ct=preg_match("/WIFE @I(.*)@/", $tempGedcom, $match);
+			if ($ct) $wife = $match[1];
+
+			$fct = count($fams);
+			$newfam = array();
+			$newfam['gedcom']="1 CHIL @I".$this->id."@\r\n";
+			$newfam['husb'] = false;
+			$newfam['wife'] = false;
+
+			for($f=0; $f<$fct; $f++) {
+			$fam = $fams[$f];
+			if ($fam['husb']===$husb) break;
+			if ($fam['wife']===$wife) break;
+			}
+			if ($f==$fct) $fam = $newfam;
+			if (!empty($husb)) $fam['husb']=$husb;
+			if (!empty($wife)) $fam['wife']=$wife;
+			$fam['gedcom'].= $tempGedcom;
+			$fams[$f] = $fam;
+			}
+			}
+			}
+
+			$fct = count($fams);
+			for($f=0; $f<$fct; $f++) {
+			if (!empty($fams[$f]["husb"])||!empty($fams[$f]["wife"])) {
+			$fams[$f]["gedcom"] = "0 @F".$fams[$f]["husb"].":".$fams[$f]["wife"]."@ FAM\r\n".$fams[$f]["gedcom"];
+			$fams[$f]['id'] = $fams[$f]["husb"].":".$fams[$f]["wife"];
+			}
+			else {
+			$fams[$f]["gedcom"] = "0 @F".$f.$this->id."@ FAM\r\n".$fams[$f]["gedcom"];
+			$fams[$f]['id'] = $f.$this->id;
+			}
+			}
+			}
+			$this->famcged = $fams;
+			return $fams;
+			*/
 	}
 
 	/**
@@ -1666,19 +2003,29 @@ class XG_Person{
 	 */
 	function getFamSGedcom(){
 		if (!empty($this->famsged)) return $this->famsged;
-		$gedcom = "";
+
 		$fams = array();
-		$hold = array();
+		foreach($this->families as $family) {
+			$gedfam = $family->getFamGedcom();
+			if (preg_match("/HUSB @I".$this->id."@/", $gedfam)>0 || preg_match("/WIFE @I".$this->id."@/", $gedfam)>0) {
+				$ct = preg_match("/0 @(.*)@ FAM/", $gedfam, $match);
+				$famid = $match[1];
+				$fams[] = array('id'=>$famid, 'gedcom'=>$gedfam);
+			}
+		}
+		/*
+		 $gedcom = "";
+		 $hold = array();
 
-		$spouseCode = "HUSB";
-		if (!is_null($this->gender) && strtolower($this->gender->getGender())=="female") $spouseCode = "WIFE";
+		 $spouseCode = "HUSB";
+		 if (!is_null($this->gender) && strtolower($this->gender->getGender())=="female") $spouseCode = "WIFE";
 
-		//-- check for spouses in the spouses array, useful for summary view
-		foreach($this->spouses as $s=>$spouseRef) {
+		 //-- check for spouses in the spouses array, useful for summary view
+		 foreach($this->spouses as $s=>$spouseRef) {
 			$altCode = "WIFE";
 			if ($spouseCode=="WIFE") $altCode = "HUSB";
 			$tempGedcom = "1 ".$altCode." @I".$spouseRef->getRef()."@\r\n";
-			
+				
 			$newfam = array();
 			$newfam['husb'] = false;
 			$newfam['wife'] = false;
@@ -1686,77 +2033,77 @@ class XG_Person{
 			$newfam[strtolower($altCode)] = $spouseRef->getRef();
 			$newfam['gedcom']="1 ".$spouseCode." @I".$this->id."@\r\n".$tempGedcom;
 			$fams[] = $newfam;
-		}
-		
-		//-- add the children from the children array, also useful for handling the summary view
-		foreach($this->children as $c=>$childRef) {
+			}
+
+			//-- add the children from the children array, also useful for handling the summary view
+			foreach($this->children as $c=>$childRef) {
 			$tempGedcom = "1 CHIL @I".$childRef->getRef()."@\r\n";
 			$hold[] = $tempGedcom;
-		}
-		
-		//get GEDCOM for each assertion for the family where person is spouse
-		foreach($this->assertions as $assertion){
-			if (!$assertion->getDisputing()){
-				//make sure not to add duplicate entries
-				$tempGedcom = $assertion->getFamSGedcom();
-				if (!empty($tempGedcom)) {
-					$husb = "";
-					$wife = "";
-					$chil = "";
-					$ct=preg_match("/HUSB @I(.*)@/", $tempGedcom, $match);
-					if ($ct) $husb = $match[1];
-					$ct=preg_match("/WIFE @I(.*)@/", $tempGedcom, $match);
-					if ($ct) $wife = $match[1];
-					$ct=preg_match("/CHIL @I(.*)@/", $tempGedcom, $match);
-					if ($ct) $chil = $match[1];
-					//-- hold the children till the end
-					if (empty($husb) && empty($wife) && !empty($chil)) {
-						$hold[] = $tempGedcom;
-					}
-					else {
-						$fct = count($fams);
-						$newfam = array();
-						$newfam['gedcom']="1 ".$spouseCode." @I".$this->id."@\r\n";
-						$newfam['husb'] = false;
-						$newfam['wife'] = false;
-						$newfam[strtolower($spouseCode)] = $this->id;
-						//$tempGedcom .= "famcount ".$fct."\r\n";
-						$found = false;
-						for($f=0; $f<$fct; $f++) {
-							$fam = $fams[$f];
-							//$tempGedcom .= $f." husb[".$fam['husb']." = ".$husb."] ";
-							//$tempGedcom .= " wife[".$fam['wife']." = ".$wife."] ";
-							if ($fam['husb']===$husb) {
-								$found = $f;
-								break;
-							}
-							if ($fam['wife']===$wife) {
-								$found = $f;
-								break;
-							}
-						}
-						if ($found===false) $fam = $newfam;
-						else $fam = $fams[$found];
-						//print "[".get_class($assertion)." ".$found." ".$tempGedcom."]";
-						if (!empty($husb)) $fam['husb']=$husb;
-						if (!empty($wife)) $fam['wife']=$wife;
-						$lines = preg_split("/\r?\n/", $tempGedcom);
-						foreach($lines as $l=>$line) {
-							if (!empty($line)) {
-								if (preg_match("/1 (HUSB)|(WIFE) @I(.*)@/", $line)) {
-									if (preg_match("/".$line."/", $fam['gedcom'])==0) $fam['gedcom'].= trim($line)."\r\n";
-								}
-								else $fam['gedcom'].= trim($line)."\r\n";
-							}
-						}
-						$fams[$f] = $fam;
-					}
-				}
 			}
-		}
 
-		//-- put the children in the families
-		foreach($hold as $h=>$tempGedcom) {
+			//get GEDCOM for each assertion for the family where person is spouse
+			foreach($this->assertions as $assertion){
+			if (!$assertion->getDisputing()){
+			//make sure not to add duplicate entries
+			$tempGedcom = $assertion->getFamSGedcom();
+			if (!empty($tempGedcom)) {
+			$husb = "";
+			$wife = "";
+			$chil = "";
+			$ct=preg_match("/HUSB @I(.*)@/", $tempGedcom, $match);
+			if ($ct) $husb = $match[1];
+			$ct=preg_match("/WIFE @I(.*)@/", $tempGedcom, $match);
+			if ($ct) $wife = $match[1];
+			$ct=preg_match("/CHIL @I(.*)@/", $tempGedcom, $match);
+			if ($ct) $chil = $match[1];
+			//-- hold the children till the end
+			if (empty($husb) && empty($wife) && !empty($chil)) {
+			$hold[] = $tempGedcom;
+			}
+			else {
+			$fct = count($fams);
+			$newfam = array();
+			$newfam['gedcom']="1 ".$spouseCode." @I".$this->id."@\r\n";
+			$newfam['husb'] = false;
+			$newfam['wife'] = false;
+			$newfam[strtolower($spouseCode)] = $this->id;
+			//$tempGedcom .= "famcount ".$fct."\r\n";
+			$found = false;
+			for($f=0; $f<$fct; $f++) {
+			$fam = $fams[$f];
+			//$tempGedcom .= $f." husb[".$fam['husb']." = ".$husb."] ";
+			//$tempGedcom .= " wife[".$fam['wife']." = ".$wife."] ";
+			if ($fam['husb']===$husb) {
+			$found = $f;
+			break;
+			}
+			if ($fam['wife']===$wife) {
+			$found = $f;
+			break;
+			}
+			}
+			if ($found===false) $fam = $newfam;
+			else $fam = $fams[$found];
+			//print "[".get_class($assertion)." ".$found." ".$tempGedcom."]";
+			if (!empty($husb)) $fam['husb']=$husb;
+			if (!empty($wife)) $fam['wife']=$wife;
+			$lines = preg_split("/\r?\n/", $tempGedcom);
+			foreach($lines as $l=>$line) {
+			if (!empty($line)) {
+			if (preg_match("/1 (HUSB)|(WIFE) @I(.*)@/", $line)) {
+			if (preg_match("/".$line."/", $fam['gedcom'])==0) $fam['gedcom'].= trim($line)."\r\n";
+			}
+			else $fam['gedcom'].= trim($line)."\r\n";
+			}
+			}
+			$fams[$f] = $fam;
+			}
+			}
+			}
+			}
+
+			//-- put the children in the families
+			foreach($hold as $h=>$tempGedcom) {
 			$ct=preg_match("/CHIL @I(.*)@/", $tempGedcom, $match);
 			if ($ct) $chil = $match[1];
 			$fct = count($fams);
@@ -1767,55 +2114,102 @@ class XG_Person{
 			$newfam[strtolower($spouseCode)] = $this->id;
 			$found = false;
 			for($f=0; $f<$fct; $f++) {
-				$fam = $fams[$f];
+			$fam = $fams[$f];
 
-				//-- check if the child is already in the family
-				if (preg_match("/CHIL @I".$chil."@/", $fams[$f]['gedcom'])>0) {
-					$found = true;
-					break;
-				}
-				if (!is_null($this->xmlGed)) {
-					$ch = false;
-					$cw = false;
-					if (!empty($fam['husb'])) {
-						$tperson = $this->xmlGed->getPerson($fam['husb']);
-						if (!is_null($tperson)) $ch = $tperson->hasChild($chil);
-					}
-					if (!empty($fam['wife'])) {
-						$tperson = $this->xmlGed->getPerson($fam['wife']);
-						if (!is_null($tperson)) $cw = $tperson->hasChild($chil);
-					}
-					if ($ch && $cw) {
-						$fams[$f]['gedcom'] .= $tempGedcom;
-						$found = true;
-						break;
-					}
-				}
+			//-- check if the child is already in the family
+			if (preg_match("/CHIL @I".$chil."@/", $fams[$f]['gedcom'])>0) {
+			$found = true;
+			break;
+			}
+			if (!is_null($this->xmlGed)) {
+			$ch = false;
+			$cw = false;
+			if (!empty($fam['husb'])) {
+			$tperson = $this->xmlGed->getPerson($fam['husb']);
+			if (!is_null($tperson)) $ch = $tperson->hasChild($chil);
+			}
+			if (!empty($fam['wife'])) {
+			$tperson = $this->xmlGed->getPerson($fam['wife']);
+			if (!is_null($tperson)) $cw = $tperson->hasChild($chil);
+			}
+			if ($ch && $cw) {
+			$fams[$f]['gedcom'] .= $tempGedcom;
+			$found = true;
+			break;
+			}
+			}
 			}
 			if (!$found) $fams[] = $newfam;
-		}
+			}
 
-		//put it all together
-		//		if (!empty($gedcom)){
-		//			$gedcom = "0 @FS".$this->id."@ FAM\r\n".$gedcom;
-		//			$fams[] = $gedcom;
-		//		}
+			//put it all together
+			//		if (!empty($gedcom)){
+			//			$gedcom = "0 @FS".$this->id."@ FAM\r\n".$gedcom;
+			//			$fams[] = $gedcom;
+			//		}
 
-		$fct = count($fams);
-		for($f=0; $f<$fct; $f++) {
+			$fct = count($fams);
+			for($f=0; $f<$fct; $f++) {
 			//$fams[$f]['gedcom'] .= "1 ".$spouseCode." @I".$this->id."@\r\n";
 			if (empty($fams[$f][strtolower($spouseCode)])) $fams[$f][strtolower($spouseCode)] = $this->id;
 			if (!empty($fams[$f]["husb"]) && !empty($fams[$f]["wife"])) {
-				$fams[$f]["gedcom"] = "0 @F".$fams[$f]["husb"].":".$fams[$f]["wife"]."@ FAM\r\n".$fams[$f]["gedcom"];
-				$fams[$f]['id'] = $fams[$f]["husb"].":".$fams[$f]["wife"];
+			$fams[$f]["gedcom"] = "0 @F".$fams[$f]["husb"].":".$fams[$f]["wife"]."@ FAM\r\n".$fams[$f]["gedcom"];
+			$fams[$f]['id'] = $fams[$f]["husb"].":".$fams[$f]["wife"];
 			}
 			else {
-				$fams[$f]["gedcom"] = "0 @F".$f.$this->id."@ FAM\r\n".$fams[$f]["gedcom"];
-				$fams[$f]['id'] = $f.$this->id;
+			$fams[$f]["gedcom"] = "0 @F".$f.$this->id."@ FAM\r\n".$fams[$f]["gedcom"];
+			$fams[$f]['id'] = $f.$this->id;
 			}
-		}
+			}
+			*/
 		$this->famsged = $fams;
 		return $fams;
+	}
+}
+
+class XG_Family extends XG_HasAssertions {
+
+	var $gedcom = null;
+
+	function getFamGedcom() {
+		if ($this->gedcom!=null) return $this->gedcom;
+		$gedcom = "";
+		$husbid = "H";
+		$wifeid = "W";
+		foreach($this->parents as $parent) {
+			$code = "HUSB";
+			if ($parent->getGender()=="Female") {
+				$code = "WIFE";
+				$wifeid = $parent->getRef();
+			}
+			else {
+				$husbid = $parent->getRef();
+			}
+			$gedcom .= "1 ".$code." @I".$parent->getRef()."@\n";
+		}
+		foreach($this->children as $child) {
+			$gedcom.="1 CHIL @I".$child->getRef()."@\n";
+		}
+		$gedcom = "0 @F".$husbid."+".$wifeid."@ FAM\n".$gedcom;
+		foreach($this->assertions as $assertion){
+			if (!$assertion->getDisputing()){
+				$gedcom .= $assertion->getIndiGedcom();
+			}
+		}
+		$this->gedcom = $gedcom;
+		return $gedcom;
+	}
+
+	function toXml($forAdd=false) {
+		$xml = '<family>';
+		foreach($this->parents as $parent) $xml.=$parent->toXml($forAdd);
+		foreach($this->spouses as $parent) $xml.=$parent->toXml($forAdd);
+		foreach($this->children as $parent) $xml.=$parent->toXml($forAdd);
+		foreach($this->assertions as $assertion){
+			$xml.=$assertion->toXml($forAdd);
+		}
+		$xml .= "</family>";
+		return $xml;
 	}
 }
 
@@ -1827,6 +2221,7 @@ class XG_Form{
 	//private fields
 	var $fullText = "";
 	var $pieces;
+	var $selected;
 
 	//getters
 	function getFullText(){
@@ -1846,13 +2241,21 @@ class XG_Form{
 		$this->pieces = $pieces;
 	}
 
-	function toXml(){
+	function getSelected() {
+		return $this->selected;
+	}
+
+	function setSelected($s) {
+		$this->selected = $s;
+	}
+
+	function toXml($forAdd=false){
 		$xml = "<form>\n";
 		$xml.="\t<fullText>".$this->fullText."</fullText>\n";
-		if(!empty($this->pieces)){
+		if(!$forAdd && !empty($this->pieces)){
 			$xml.="\t<pieces>\n";
-				if (is_object($this->pieces))
-					$xml.=$this->pieces->toXml();
+			if (is_object($this->pieces))
+			$xml.=$this->pieces->toXml();
 
 			$xml.="\t</pieces>\n";
 		}
@@ -1903,7 +2306,7 @@ class XG_Citation{
 	var $citation;
 	var $id;
 	var $tempId;
-	
+
 	function toXml(){
 		$xml='';
 		$xml.="<citation id=\"".$this->id."\" />";
@@ -1957,7 +2360,7 @@ class XG_Note{
 	var $note;
 	var $id;
 	var $tempId;
-	
+
 	function toXml(){
 		$xml='';
 		$xml.="<note id=\"".$this->id."\">";
@@ -2035,15 +2438,15 @@ class XG_Note{
 /**
  * the reference to a person and their role (man, woman, husband, wife, son, daughter)
  */
-class XG_PersonRef{
+class XG_PersonRef extends XG_HasAssertions {
 
 	//Fields
 	var $age;
 	var $ref;
 	var $role;
+	var $gender;
 
 	var $table = array();
-
 
 	//Getters and Setters
 	function getAge(){
@@ -2070,6 +2473,13 @@ class XG_PersonRef{
 		$this->role=$value;
 	}
 
+	function getGender() {
+		return $this->gender;
+	}
+
+	function setGender($g) {
+		$this->gender = $g;
+	}
 
 	//constructor
 	function XG_PersonRef(){
@@ -2240,7 +2650,7 @@ class XG_Ordinance extends XG_Assertion{
 	}
 
 	function setSpouse($value){
-		$this->person->addSpouse($value);
+		if ($this->person) $this->person->addSpouse($value);
 		$this->spouse=$value;
 	}
 
@@ -2370,16 +2780,17 @@ class XG_Ordinance extends XG_Assertion{
 
 		return $info;
 	}
-	
+
 	function toXml($forAdd=false){
 		$xml='';
 		//-- ordinances cannot be added
-		if ($forAdd) return $xml;
-		$xml.="<ordinance type=\"".$this->type."\" scope=\"".$this->scope."\"";
-		if (!$forAdd) {
+		//if ($forAdd) return $xml;
+		$xml.="<ordinance scope=\"".$this->scope."\"";
+		if (!$forAdd || $this->isMarkedForDelete()) {
 			$xml.=" version=\"".$this->version."\" modified=\"".$this->modified."\" ";
-			$xml.="id=\"".$this->id."\" disputing=\"".($this->disputing==false?"false":"true")."\" contributor=\"".$this->contributor."\"";
+			$xml.=" disputing=\"".($this->disputing==false?"false":"true")."\" contributor=\"".$this->contributor."\"";
 		}
+		if ($this->isMarkedForDelete()) $xml.=' action="Delete"';
 		$xml .=">\n";
 		if(!empty($this->citations)){
 			$xml.="<citations>\n";
@@ -2395,19 +2806,23 @@ class XG_Ordinance extends XG_Assertion{
 			}
 			$xml.="</notes>\n";
 		}
+		$xml .= "<value type=\"".$this->type."\"";
+		if (!empty($this->id)) $xml .= " id=\"".$this->id."\"";
+		$xml .= ">";
 		if(!empty($this->date))$xml.=$this->date->toXml();
 		if(!empty($this->place))$xml.=$this->place->toXml();
-		if(!empty($this->spouse)){
-			$xml.="<spouse role=\"".$this->spouse->getRole()."\" ref=\"".$this->spouse->getRef()."\" />\n";
-		}
-		foreach($this->parents as $parent) {
-			if (!empty($parent)) {
-				$xml .= "<parent ref=\"".$parent->getRef()."\" />\n";
-			}
-		}
+//		if(!empty($this->spouse)){
+//			$xml.="<spouse role=\"".$this->spouse->getRole()."\" ref=\"".$this->spouse->getRef()."\" />\n";
+//		}
+//		foreach($this->parents as $parent) {
+//			if (!empty($parent)) {
+//				$xml .= "<parent ref=\"".$parent->getRef()."\" />\n";
+//			}
+//		}
 		if (!empty($this->temple)) {
 			$xml .= "<temple>".$this->temple."</temple>\n";
 		}
+		$xml .="</value>";
 		$xml.="</ordinance>\n";
 		return $xml;
 	}
@@ -2425,9 +2840,20 @@ class XG_Assertion {
 	var $contributor;
 	var $disputing = false;
 	var $person = null;
+	var $disposition;
+	var $selected;
+	var $markedForDelete = false;
 
 	function XG_Assertion() {
 
+	}
+
+	function isMarkedForDelete() {
+		return $this->markedForDelete;
+	}
+
+	function setMarkedForDelete($b) {
+		$this->markedForDelete = $b;
 	}
 
 	/**
@@ -2440,6 +2866,8 @@ class XG_Assertion {
 	}
 
 	function addRecordInfo($factrec, &$person_class){
+		$fsid = get_gedcom_value("_FSID", 2, $factrec, '', false);
+		if ($fsid) $this->setId($fsid);
 		$chanDate = get_gedcom_value("CHAN:DATE", 2, $factrec, '', false);
 		/* http://us2.php.net/manual/en/function.date.php  modified="2007-07-23T10:40:36.771-06:00"*/
 		/* c	ISO 8601 date (added in PHP 5)	2004-02-12T15:19:21+00:00 */
@@ -2487,7 +2915,7 @@ class XG_Assertion {
 		if(!empty($date) ){
 			$XGDate = new XG_Date();
 			$XGDate->setOriginal($date);
-			$g=new GedcomDate($date); 
+			$g=new GedcomDate($date);
 			$XGDate->setNormalized(unhtmlentities(strip_tags($g->Display(false))));
 			$this->setDate($XGDate);
 		}
@@ -2501,7 +2929,7 @@ class XG_Assertion {
 	}
 	function addSpouse($factrec, &$person_class){
 		$XGSpouse = new XG_PersonRef();
-		$spouse = get_gedcom_value("_PGVS", 1, $factrec, '', false);
+		$spouse = get_gedcom_value("_PGVS", 2, $factrec, '', false);
 		if(!empty($spouse)){
 			$XGSpouse->setRef($spouse);
 			$spouseObject = Person::getInstance($spouse);
@@ -2513,7 +2941,7 @@ class XG_Assertion {
 		}
 	}
 	function addScope($factrec, &$person_class){
-		$famID = get_gedcom_value("_PGVFS", 1, $factrec, '', false);
+		$famID = get_gedcom_value("_PGVFS", 2, $factrec, '', false);
 		if(!empty($famID)){
 			$this->setScope("couple");
 		}
@@ -2654,6 +3082,23 @@ class XG_Assertion {
 		return $this->disputing;
 	}
 
+	function getDisposition() {
+		return $this->disposition;
+	}
+
+	function setDisposition($d) {
+		$this->disposition = $d;
+		if ($this->disposition=="disputing") $this->disputing = true;
+	}
+
+	function getSelected() {
+		return $this->selected;
+	}
+
+	function setSelected($s) {
+		$this->selected = $s;
+	}
+
 	//default methods
 	function getIndiGedcom($gcLevel=2){
 		$person = "";
@@ -2674,9 +3119,10 @@ class XG_Assertion {
 			$gedcom .= ($gcLevel+1)." DATE ".$date."\r\n";
 			$gedcom .= ($gcLevel+2)." TIME ".$time."\r\n";
 			$gedcom .= ($gcLevel+1)." VERS ".$this->getVersion()."\r\n";
-			$gedcom .= ($gcLevel+1)." _FSID ".$this->getId()."\r\n";
-			if (!is_null($this->contributor)) $gedcom .= $this->contributor->getGedcom($gcLevel+1);
 		}
+		if ($this->getId()) $gedcom .= ($gcLevel)." _FSID ".$this->getId()."\r\n";
+		if (!is_null($this->contributor)) $gedcom .= $this->contributor->getGedcom($gcLevel+1);
+
 		return $gedcom;
 	}
 
@@ -2691,10 +3137,23 @@ class XG_Assertion {
 	function getAssertionType() {
 		return substr(get_class($this), 3);
 		/* events, facts, ordinances*/
-		
+
 		/*christa Edited */
 	}
 
+}
+
+class XG_Selected {
+	var $date;
+	var $contributor;
+	var $value;
+
+	function getDate() { return $this->date; }
+	function setDate($d) { $this->date = $d; }
+	function getContributor() { return $this->contributor; }
+	function setContributor($c) { $this->contributor = $c; }
+	function getValue() { return $this->value; }
+	function setValue($v) { $this->value = $v; }
 }
 
 /**
@@ -2706,11 +3165,12 @@ class XG_Date{
 	var $original="";
 	var $normalized="";
 	var $number=2;
+	var $selected;
 
 	function toXml(){
 		$xml='';
 		$xml.="<date>\n";
-		$xml.="<normalized>".$this->normalized."</normalized>\n";
+		if (!empty($this->normalized)) $xml.="<normalized>".$this->normalized."</normalized>\n";
 		$xml.="<original>".$this->original."</original>\n";
 		$xml.="</date>\n";
 		return $xml;
@@ -2731,6 +3191,14 @@ class XG_Date{
 
 	function getNormalized(){
 		return $this->normalized;
+	}
+
+	function getSelected() {
+		return $this->selected;
+	}
+
+	function setSelected($s) {
+		$this->selected = $s;
 	}
 
 	/**
@@ -2911,10 +3379,10 @@ class XG_Relationship extends XG_Assertion{
 		if(!empty($this->parent))$xml.="<parent role=\"".$this->parent->getRole()."\" ref=\"".$this->parent->getRef()."\" />\n";
 		if(!empty($this->child))$xml.="<child role=\"".$this->child->getRole()."\" ref=\"".$this->child->getRef()."\" />\n";
 		$xml.="</relationship>\n";
-		
+
 		return $xml;
 	}
-	
+
 	//Getters and addters
 	function setScope($value){
 		$this->scope=$value;
@@ -3030,6 +3498,110 @@ class XG_Contributor{
 	}
 }
 
+class XG_Characteristic extends XG_Assertion {
+	var $date;
+	var $detail;
+	var $lineage;
+	var $place;
+	var $type;
+	var $title;
+
+	function getDate() { return $this->date; }
+	function setDate(&$d) { $this->date = $d; }
+	function getDetail() { return $this->detail; }
+	function setDetail($d) {$this->detail = $d; }
+	function getLineage() { return $this->lineage; }
+	function setLineage($l) { $this->lineage = $l; }
+	function getPlace() { return $this->place; }
+	function setPlace(&$p) { $this->place = $p; }
+	function getType() { return $this->type; }
+	function setType($t) { $this->type = $t; }
+	function getTitle() { return $this->title; }
+	function setTitle($t) { $this->title = $t; }
+
+	function toXml($forAdd=false){
+		$xml='';
+		$xml.="<characteristic";
+		if (!$forAdd || $this->isMarkedForDelete()) {
+			$xml .=" version=\"".$this->version."\" ";
+			$xml.="modified=\"".$this->modified."\" disputing=\"".($this->disputing==false?"false":"true")."\" contributor=\"".$this->contributor."\"";
+		}
+		if ($this->isMarkedForDelete()) $xml.=' action="Delete"';
+		$xml.=">\n";
+		if(!empty($this->citations)){
+			$xml.="<citations>";
+			foreach($this->citations as $citation){
+				$xml.=$citation->toXml();
+			}
+			$xml.="</citations>\n";
+		}
+
+		if(!empty($this->notes)){
+			$xml.="<notes>\n";
+			foreach($this->notes as $note){
+				if (is_object($note)) $xml.=$note->toXml();
+				else $xml .="WHAT?".print_r($note, true);
+			}
+			$xml.="</notes>\n";
+		}
+		$xml .= "<value type=\"".$this->type."\"";
+		if (!empty($this->id)) $xml .= " id=\"".$this->id."\"";
+		$xml .= ">";
+		if(!empty($this->detail)){
+			$xml.="<detail>".$this->detail."</detail>\n";
+		}
+		if(!empty($this->title)){
+			$xml.="<title>".$this->title."</title>\n";
+		}
+		if(!empty($this->date))$xml.=$this->date->toXml();
+		if(!empty($this->place))$xml.=$this->place->toXml();
+		if(!empty($this->parent)){
+			//TODO: Make <detail> not static
+			$xml.="<detail>Biological</detail>\n";
+			$xml.="<parent role=\"".$this->parent->getRole()."\" ref=\"".$this->parent->getRef()."\" />\n";
+		}
+		if(!empty($this->spouse)){
+			$xml.="<spouse role=\"".$this->spouse->getRole()."\" ref=\"".$this->spouse->getRef()."\" />\n";
+		}
+		if(!empty($this->child)){
+			$xml.="<child role=\"".$this->child->getRole()."\" ref=\"".$this->child->getRef()."\" />\n";
+		}
+		$xml.="</value>";
+		$xml.="</characteristic>\n";
+		return $xml;
+	}
+
+	/**
+	 * get GEDCOM portion for this event from the type, description, date and place
+	 */
+	function getIndiGedcom(){
+		global $factHandler;
+
+		$result="";
+		$lowerType=strtolower($this->type);
+
+		// get GEDCOM for the event
+		if(!empty($factHandler[$lowerType])){
+			$result .= "1 ".$factHandler[$lowerType]." \r\n";
+		}else{
+			$result .="1 FACT ".$this->detail."\r\n";
+			$result .="2 TYPE ".$this->type."\r\n";
+		}
+
+		//add any dates and places
+		if(!empty($this->date)){
+			$result .= $this->date->getGedcom();
+		}
+		if(!empty($this->place)){
+			$result .= $this->place->getGedcom();
+		}
+
+		//add GEDCOM from parent if any
+		$result.=parent::getIndiGedcom(2);
+		return $result;
+	}
+}
+
 
 class XG_Fact extends XG_Assertion{
 
@@ -3053,10 +3625,11 @@ class XG_Fact extends XG_Assertion{
 		$xml='';
 		if ($forAdd && ($this->type=='Lineage' || !empty($this->parent) || !empty($this->spouse) || !empty($this->child))) return $xml;
 		$xml.="<fact type=\"".$this->type."\" scope=\"".$this->scope."\"";
-		if (!$forAdd) {
+		if (!$forAdd || $this->isMarkedForDelete()) {
 			$xml .=" version=\"".$this->version."\" ";
 			$xml.="modified=\"".$this->modified."\" id=\"".$this->id."\" disputing=\"".($this->disputing==false?"false":"true")."\" contributor=\"".$this->contributor."\"";
 		}
+		if ($this->isMarkedForDelete()) $xml.=' action="Delete"';
 		$xml.=">\n";
 		if(!empty($this->citations)){
 			$xml.="<citations>";
@@ -3065,7 +3638,7 @@ class XG_Fact extends XG_Assertion{
 			}
 			$xml.="</citations>\n";
 		}
-		
+
 		if(!empty($this->notes)){
 			$xml.="<notes>\n";
 			foreach($this->notes as $note){
@@ -3077,6 +3650,8 @@ class XG_Fact extends XG_Assertion{
 		if(!empty($this->detail)){
 			$xml.="<detail>".$this->detail."</detail>\n";
 		}
+		if(!empty($this->date))$xml.=$this->date->toXml();
+		if(!empty($this->place))$xml.=$this->place->toXml();
 		if(!empty($this->parent)){
 			//TODO: Make <detail> not static
 			$xml.="<detail>Biological</detail>\n";
@@ -3091,7 +3666,7 @@ class XG_Fact extends XG_Assertion{
 		$xml.="</fact>\n";
 		return $xml;
 	}
-	
+
 	//Getters and addters
 
 	function setScope($value){
@@ -3277,7 +3852,7 @@ $eventHandler["cremation"]="CREM";
 $eventHandler["death"]="DEAT";
 $eventHandler["graduation"]="GRAD";
 $eventHandler["immigration"]="IMMI";
-$eventHandler["military service"]="_MILT";
+$eventHandler["military service"]="_MILI";
 $eventHandler["naturalization"]="NATU";
 $eventHandler["probate"]="PROB";
 $eventHandler["retirement"]="RETI";
@@ -3290,6 +3865,7 @@ $eventHandler["marriage banns"]="MARB";
 $eventHandler["marriage contract"]="MARC";
 $eventHandler["marriage license"]="MARL";
 $eventHandler["other"]="EVEN";
+$eventHandler["census"]="CENS";
 
 global $factHandler;
 $factHandler["caste name"]="CAST";
@@ -3331,7 +3907,7 @@ class XG_Event extends XG_Assertion{
 	var $result="";
 
 	var $famsEventHandler=array();
-	
+
 	function getAssertionType() {
 		return $this->type;
 	}
@@ -3342,19 +3918,18 @@ class XG_Event extends XG_Assertion{
 	 */
 	function setPerson(&$person) {
 		parent::setPerson($person);
-		if ($this->type=='Birth') $person->setBirthAssertion($this);
-		if ($this->type=='Death') $person->setDeathAssertion($this);
-		if ($this->type=='Marriage') $person->setMarriageAssertion($this);
 	}
 
 	function toXml($forAdd=false){
 		$xml='';
 		if ($forAdd && ($this->scope!='person' || !empty($this->spouse))) return '';
-		$xml.="<event type=\"".$this->type."\" scope=\"".$this->scope."\"";
-		if (!$forAdd) {
+		$xml.="<event";
+		if (!empty($this->scope) && $this->scope!="person") $xml .= " scope=\"".$this->scope."\"";
+		if (!$forAdd || $this->isMarkedForDelete()) {
 			$xml.=" version=\"".$this->version."\" modified=\"".$this->modified."\" ";
-			$xml.="id=\"".$this->id."\" disputing=\"".($this->disputing==false?"false":"true")."\" contributor=\"".$this->contributor."\"";
+			$xml.=" disputing=\"".($this->disputing==false?"false":"true")."\" contributor=\"".$this->contributor."\"";
 		}
+		if ($this->isMarkedForDelete()) $xml.=' action="Delete"';
 		$xml.=">\n";
 		if(!empty($this->citations)){
 			$xml.="<citations>\n";
@@ -3370,11 +3945,16 @@ class XG_Event extends XG_Assertion{
 			}
 			$xml.="</notes>\n";
 		}
+		$xml .= "<value type=\"".$this->type."\"";
+		if (!empty($this->id)) $xml .= " id=\"".$this->id."\"";
+		$xml .= ">";
+		if(!empty($this->title)) $xml .= "<title>".$this->title."</title>";
 		if(!empty($this->date))$xml.=$this->date->toXml();
 		if(!empty($this->place))$xml.=$this->place->toXml();
 		if(!empty($this->spouse)){
 			$xml.="<spouse role=\"".$this->spouse->getRole()."\" ref=\"".$this->spouse->getRef()."\" />\n";
 		}
+		$xml .= "</value>";
 		$xml.="</event>\n";
 		return $xml;
 	}
@@ -3457,11 +4037,11 @@ class XG_Event extends XG_Assertion{
 		$lowerType=strtolower($this->type);
 
 		// get GEDCOM for the event
-		if(!empty($eventHandler[$lowerType])){
+		if(!empty($eventHandler[$lowerType]) && $lowerType!='other'){
 			$result .= "1 ".$eventHandler[$lowerType]." \r\n";
 		}else{
-			$result .="1 EVEN \r\n";
-			$result .="1 TYPE ".$this->type." ".$this->description."\r\n";
+			$result .="1 EVEN ".$this->description."\r\n";
+			$result .="2 TYPE ".$this->title."\r\n";
 		}
 
 		//add any dates and places
