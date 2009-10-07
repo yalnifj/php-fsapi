@@ -49,17 +49,18 @@ class FamilySearchProxy extends FamilySearchAPIClient {
 	var $paths = array(
 	'login'		=>	'/identity/v1/login',
 	'logout'	=>	'/identity/v1/logout',
-	'getPerson'	=>     '/familytree/v1/search',
-	'getPersonById'	=> '/familytree/v1/person/',
-	'addPerson'	=> 'familytree/v1/person',
-	'updatePersonById'	=> '/familytree/v1/person/',
-	'getPlace'	=>	   '/familytree/v1/place?',
-	'getPlaceById'	=>  '/familytree/v1/place/',
-	'getUserById'	=>   '/familytree/v1/user/',
-	'getName'	=>	'/familytree/v1/name?',
-	'matchById'		=>	'/familytree/v1/match/',
-	'matchByQuery'	=>	'/familytree/v1/match?',
-	'mergePerson' => '/familytree/v1/person/'
+	'getPerson'	=>     '/familytree/v2/search',
+	'getPersonById'	=> '/familytree/v2/person/',
+	'addPerson'	=> 'familytree/v2/person',
+	'updatePersonById'	=> '/familytree/v2/person/',
+	'getPlace'	=>	   '/familytree/v2/place?',
+	'getPlaceById'	=>  '/familytree/v2/place/',
+	'getUserById'	=>   '/familytree/v2/user/',
+	'getName'	=>	'/familytree/v2/name?',
+	'matchById'		=>	'/familytree/v2/match/',
+	'matchByQuery'	=>	'/familytree/v2/match?',
+	'mergePerson' => '/familytree/v2/person/',
+	'addRelationship' => '/familytree/v2/person/'
 	);
 
 	/**
