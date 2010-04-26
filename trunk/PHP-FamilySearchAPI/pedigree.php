@@ -46,7 +46,7 @@ include_once("FSParse/XMLGEDCOM.php");
 $username = '';
 $password = '';
 $url = 'http://www.dev.usys.org';
-$rootId = 'me';
+$rootId = 'KLB4-5Z7';
 if (!empty($_REQUEST['rootId'])) $rootId = $_REQUEST['rootId'];
 
 //-- check for authentication if a preset username and password were not provided
@@ -69,19 +69,7 @@ $xml = $client->getPersonById($rootId, "parents=summary");
 $xmlGed->parseXml($xml);
 //--get the first person 
 $arr = $xmlGed->getPersons();
-if ($rootId=="me") $person = current($arr);
-else $person = getPerson($rootId);
-
-/*
-$assertions = $person->getAssertions();
-$ordinances = array();
-foreach($assertions as $assertion) {
-	if (get_class($assertion)=='XG_Ordinance') {
-		$ordinances[] = $assertion;
-		print $assertion->getType()." ".$assertion->getTemple();
-	}
-}
-*/
+$person = getPerson($rootId);
 
 //-------------------------------------- setup some helper functions
 
@@ -225,7 +213,7 @@ function printPersonBox(&$person, $gen=4) {
 </style>
 </head>
 <body>
-<h2>Pedigree Chart for <?php print $person->getPrimaryName()->getFullText(); ?></h2>
+<h2>Pedigree Chart for <?php if ($person->getPrimaryName()) print $person->getPrimaryName()->getFullText(); ?></h2>
 <?php printPersonBox($person, 3); ?>
 </body>
 </html>
