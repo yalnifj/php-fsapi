@@ -204,18 +204,18 @@ class XmlGedcom {
 	 * @param string $id
 	 * @return XG_Person
 	 */
-	function &getPerson($id, $summary='summary') {
+	function &getPerson($id, $summary='summary', $ignoreCache=false) {
 		$person = null;
 		//print "|$id|";
 		//foreach($this->persons as $key=>$p) print "[$key] ";
-		if (isset($this->persons[$id])) {
+		if (!$ignoreCache && isset($this->persons[$id])) {
 			return $this->persons[$id];
 		}
 		if ($this->proxy!=null) {
 			$query = "families=$summary&events=$summary&children=all&properties=$summary&parents=$summary";
 			if ($summary=='all') $query.="&ordinances=all&names=all&genders=all&characteristics=all&identifiers=all&contributor=all";
 			$result = $this->proxy->getPersonById($id,$query);
-			//		print htmlentities($result);
+//					print htmlentities($result);
 			$this->parseXml($result);
 			if (!empty($this->error)) {
 				throw new Exception($this->error->getMessage());
@@ -1953,6 +1953,9 @@ class XG_Person extends XG_HasAssertions {
 		foreach($this->altIds as $a=>$id) {
 			if ($id['type']=='Ancestral File Number') {
 				$gedcom .= '1 AFN '.$id['id']."\r\n";
+			}
+			else if ($id['type']=='GEDCOM UID') {
+				$gedcom .= '1 _UID '.$id['id']."\r\n";
 			}
 			else {
 				$gedcom .= "1 REFN ".$id['id']."\r\n";
